@@ -150,7 +150,12 @@ psycross_fixup(gpu/PsyX_GPU.cpp
 # overridable per draw, and dithering that can be switched off.
 psycross_fixup(render/PsyX_render.cpp
     FIND    "int g_cfg_bilinearFiltering = 0;\n"
-    REPLACE "int g_cfg_bilinearFiltering = 0;\nextern \"C\" {\nextern int g_cfg_dithering;\nvoid PsyX_PortSetView(void);\nvoid PsyX_PortScissor(float x, float y, float w, float h);\nvoid PsyX_PortBlitFromWindow(int x, int y, int w, int h);\nint PsyX_PortTextureFilter(void);\n}\n")
+    REPLACE "int g_cfg_bilinearFiltering = 0;\nextern \"C\" {\nextern int g_cfg_dithering;\nvoid PsyX_PortSetView(void);\nvoid PsyX_PortScissor(float x, float y, float w, float h);\nvoid PsyX_PortClear(void);\nvoid PsyX_PortBlitFromWindow(int x, int y, int w, int h);\nint PsyX_PortTextureFilter(void);\n}\n")
+
+# The background fill clears only the view, so the bars stay black.
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "\tglClearColor(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);\n\tglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);"
+    REPLACE "\tglClearColor(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);\n\tPsyX_PortClear();")
 
 psycross_fixup(render/PsyX_render.cpp
     FIND    "GR_SetViewPort(0, 0, g_windowWidth, g_windowHeight);"

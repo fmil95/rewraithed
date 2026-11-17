@@ -121,6 +121,37 @@ void PsyX_PortSetView(void)
     glViewport(g_portViewX, g_portViewY, g_portViewW, g_portViewH);
 }
 
+/* Replaces PsyCross's clear (the game's background fill), which covered the
+ * whole window and so painted the pillarbox bars in the area's fog colour.
+ * In the window only the view rectangle is cleared. */
+void PsyX_PortClear(void)
+{
+    GLint fbo = 0;
+
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &fbo);
+
+    if ((fbo == 0) && ((g_portViewW != g_windowWidth) || (g_portViewH != g_windowHeight)))
+    {
+        GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
+        GLint box[4];
+
+        glGetIntegerv(GL_SCISSOR_BOX, box);
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(g_portViewX, g_portViewY, g_portViewW, g_portViewH);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glScissor(box[0], box[1], box[2], box[3]);
+
+        if (!scissor)
+        {
+            glDisable(GL_SCISSOR_TEST);
+        }
+
+        return;
+    }
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
+
 /* A scissor rectangle given in 0..1 of the PSX screen (top-down). */
 void PsyX_PortScissor(float x, float y, float w, float h)
 {
