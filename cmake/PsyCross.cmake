@@ -30,7 +30,7 @@ target_include_directories(psycross PUBLIC
 # "PsyX_GPU.h"); these let such includes resolve to the submodule's files.
 file(GLOB _psycross_src_dirs LIST_DIRECTORIES true "${PSYCROSS_DIR}/src/*")
 list(FILTER _psycross_src_dirs INCLUDE REGEX "/[^./]+$")
-target_include_directories(psycross PRIVATE ${_psycross_src_dirs})
+target_include_directories(psycross PRIVATE "${PSYCROSS_DIR}/src" ${_psycross_src_dirs})
 
 # These change primitive and OT layouts, so they are PUBLIC: the game must be
 # compiled with exactly the same values. Soul Reaver builds its own primitives

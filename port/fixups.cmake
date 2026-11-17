@@ -150,7 +150,23 @@ psycross_fixup(gpu/PsyX_GPU.cpp
 # overridable per draw, and dithering that can be switched off.
 psycross_fixup(render/PsyX_render.cpp
     FIND    "int g_cfg_bilinearFiltering = 0;\n"
-    REPLACE "int g_cfg_bilinearFiltering = 0;\nextern \"C\" {\nextern int g_cfg_dithering;\nvoid PsyX_PortSetView(void);\nvoid PsyX_PortScissor(float x, float y, float w, float h);\nvoid PsyX_PortClear(void);\nvoid PsyX_PortBlitFromWindow(int x, int y, int w, int h);\nint PsyX_PortTextureFilter(void);\n}\n")
+    REPLACE "int g_cfg_bilinearFiltering = 0;\nextern \"C\" {\nextern int g_cfg_dithering;\nvoid PsyX_PortSetView(void);\nvoid PsyX_PortScissor(float x, float y, float w, float h);\nvoid PsyX_PortClear(void);\nvoid PsyX_PortBeforeSwap(void);\nvoid PsyX_PortBlitFromWindow(int x, int y, int w, int h);\nint PsyX_PortTextureFilter(void);\n}\n")
+
+# Screenshot key (F12): PsyCross saved one upside-down SCREENSHOT.BMP in
+# the working folder, read after the frame was shown. The port takes it
+# from the next frame before it is shown (port/psycross/psyx_port.cpp) and
+# saves numbered PNGs in "screenshots" next to the exe.
+psycross_fixup(PsyX_main.cpp
+    FIND    "void PsyX_TakeScreenshot()\n{"
+    REPLACE "extern \"C\" void PsyX_PortRequestScreenshot(void);\n\nvoid PsyX_TakeScreenshot()\n{")
+
+psycross_fixup(PsyX_main.cpp
+    FIND    "\t\t\tPsyX_TakeScreenshot();\n"
+    REPLACE "\t\t\tPsyX_PortRequestScreenshot();\n")
+
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "#if defined(RENDERER_OGL) || defined(RENDERER_OGLES)\n\tSDL_GL_SwapWindow(g_window);"
+    REPLACE "#if defined(RENDERER_OGL) || defined(RENDERER_OGLES)\n\tPsyX_PortBeforeSwap();\n\tSDL_GL_SwapWindow(g_window);")
 
 # The background fill clears only the view, so the bars stay black.
 psycross_fixup(render/PsyX_render.cpp

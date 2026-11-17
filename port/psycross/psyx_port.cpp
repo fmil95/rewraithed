@@ -10,6 +10,8 @@
  *  - the texture filter, which can be overridden per draw (2D pictures
  *    follow the "Scaling" setting, 3D follows "Filtering").
  */
+#include <stdlib.h>
+
 #include <SDL.h>
 
 #include "PsyX/common/glad.h"
@@ -213,6 +215,87 @@ void PsyX_PortBlitFromWindow(int x, int y, int w, int h)
         x, y + h, x + w, y, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
     glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+}
+
+/* Screenshot key (F12): taken from the next frame, just before it is shown
+ * (after the swap the window's contents are undefined). */
+void port_save_screenshot(const unsigned char *rgba, int w, int h);   /* port/src/native/screenshot.c */
+
+static int screenshotPending;
+
+void PsyX_PortRequestScreenshot(void)
+{
+    screenshotPending = 1;
+}
+
+void PsyX_PortBeforeSwap(void)
+{
+    static GLuint fbo;
+    static GLuint tex;
+    static int texW, texH;
+    GLint readFbo = 0;
+    GLint drawFbo = 0;
+    GLint packAlign = 4;
+    int w = g_portViewW;
+    int h = g_portViewH;
+    unsigned char *pixels;
+
+    if (!screenshotPending)
+    {
+        return;
+    }
+
+    screenshotPending = 0;
+
+    if ((w <= 0) || (h <= 0))
+    {
+        w = g_windowWidth;
+        h = g_windowHeight;
+        g_portViewX = 0;
+        g_portViewY = 0;
+        g_portViewW = w;
+        g_portViewH = h;
+    }
+
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFbo);
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFbo);
+
+    if (fbo == 0)
+    {
+        glGenFramebuffers(1, &fbo);
+        glGenTextures(1, &tex);
+    }
+
+    if ((texW != w) || (texH != h))
+    {
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        texW = w;
+        texH = h;
+    }
+
+    /* the view rectangle, resolved if multisampled, top row first */
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+    PsyX_PortBlitFromWindow(0, 0, w, h);
+
+    pixels = (unsigned char *)malloc((size_t)w * h * 4);
+
+    if (pixels != NULL)
+    {
+        glGetIntegerv(GL_PACK_ALIGNMENT, &packAlign);
+        glPixelStorei(GL_PACK_ALIGNMENT, 4);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+        glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        glPixelStorei(GL_PACK_ALIGNMENT, packAlign);
+
+        port_save_screenshot(pixels, w, h);
+        free(pixels);
+    }
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFbo);
 }
 
 int PsyX_PortTextureFilter(void)
