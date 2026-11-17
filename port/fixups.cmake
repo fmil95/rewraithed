@@ -70,9 +70,9 @@ game_fixup(Overlays/alukabss/alukabss.c
     FIND    "    localloc = data->location;\n"
     REPLACE "    if (data != NULL)\n    {\n        localloc = data->location;\n    }\n")
 
-# NULL read: monsters killed by something that is not a hit message (diving
-# out of water next to them, the Force Glyph) get knocked back with no hit
-# data; on PSX that reads zeros, i.e. no knockback.
+# NULL read: a monster that dies without a hit message (seen while Raziel
+# swims in city19) is knocked back with no hit data; on PSX that reads
+# zeros, i.e. no knockback.
 game_fixup(Game/MONSTER/MONLIB.c
     FIND    "    d = data->knockBackDistance;\n    t = data->knockBackDuration;\n"
     REPLACE "    d = (data != NULL) ? data->knockBackDistance : 0;\n    t = (data != NULL) ? data->knockBackDuration : 0;\n")

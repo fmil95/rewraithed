@@ -320,15 +320,15 @@ class Gen:
         if op == 'mfhi':
             return w(a[0], 'HI')
         if op == 'lw':
-            return w(a[0], 'MEM32(%s)' % self.mem(a[1]))
+            return w(a[0], 'LD32(%s)' % self.mem(a[1]))
         if op == 'lh':
-            return w(a[0], '(u32)(s32)MEMS16(%s)' % self.mem(a[1]))
+            return w(a[0], '(u32)(s32)LDS16(%s)' % self.mem(a[1]))
         if op == 'lhu':
-            return w(a[0], '(u32)MEM16(%s)' % self.mem(a[1]))
+            return w(a[0], '(u32)LD16(%s)' % self.mem(a[1]))
         if op == 'lb':
-            return w(a[0], '(u32)(s32)MEMS8(%s)' % self.mem(a[1]))
+            return w(a[0], '(u32)(s32)LDS8(%s)' % self.mem(a[1]))
         if op == 'lbu':
-            return w(a[0], '(u32)MEM8(%s)' % self.mem(a[1]))
+            return w(a[0], '(u32)LD8(%s)' % self.mem(a[1]))
         if op in ('lwl', 'lwr', 'swl', 'swr'):
             # unaligned word access, little-endian R3000
             return 'hasm_%s(%d, %s);' % (op, self.reg(a[0]), self.mem(a[1]))
@@ -347,7 +347,7 @@ class Gen:
         if op == 'cfc2':
             return w(a[0], 'CFC2(%d)' % self.reg(a[1]))
         if op == 'lwc2':
-            return 'MTC2(MEM32(%s), %d);' % (self.mem(a[1]), self.reg(a[0]))
+            return 'MTC2(LD32(%s), %d);' % (self.mem(a[1]), self.reg(a[0]))
         if op == 'swc2':
             return 'MEM32(%s) = MFC2(%d);' % (self.mem(a[1]), self.reg(a[0]))
         raise ValueError('unsupported instruction: ' + ins.line)
@@ -577,6 +577,16 @@ extern int doCOP2(int op);
 #define MEM8(a)   (*(u8 *)(uintptr_t)(a))
 #define MEMS8(a)  (*(s8 *)(uintptr_t)(a))
 
+/* Loads. The game reads through NULL in places (e.g. a face without
+ * normals); on PSX that is RAM and harmless. Addresses below 64 KB are
+ * never valid on the PC side, so they read as zero. */
+#define LOWADDR(a) ((u32)(a) < 0x10000u)
+#define LD32(a)   (LOWADDR(a) ? 0u : MEM32(a))
+#define LD16(a)   (LOWADDR(a) ? (u16)0 : MEM16(a))
+#define LDS16(a)  (LOWADDR(a) ? (s16)0 : MEMS16(a))
+#define LD8(a)    (LOWADDR(a) ? (u8)0 : MEM8(a))
+#define LDS8(a)   (LOWADDR(a) ? (s8)0 : MEMS8(a))
+
 static u32 R[32];
 static u32 HI, LO;
 static int hasm_depth;
@@ -601,13 +611,13 @@ static void hasm_divu(u32 x, u32 y)
  * aligned word into the register, swl/swr store part of the register. */
 static void hasm_lwl(int rt, u32 addr)
 {
-    u32 sh = (addr & 3) * 8, w = MEM32(addr & ~3u);
+    u32 sh = (addr & 3) * 8, w = LD32(addr & ~3u);
     if (rt) R[rt] = (R[rt] & (0x00FFFFFFu >> sh)) | (w << (24 - sh));
 }
 
 static void hasm_lwr(int rt, u32 addr)
 {
-    u32 sh = (addr & 3) * 8, w = MEM32(addr & ~3u);
+    u32 sh = (addr & 3) * 8, w = LD32(addr & ~3u);
     if (rt) R[rt] = (R[rt] & ~(0xFFFFFFFFu >> sh)) | (w >> sh);
 }
 
