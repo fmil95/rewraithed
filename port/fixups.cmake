@@ -115,6 +115,19 @@ game_fixup(Game/UNDRWRLD.c
     FIND    "    UNDERWORLD_LoadLevel(\"under1\", &gameTrackerX);\n"
     REPLACE "    UNDERWORLD_LoadLevel(\"under1\", &gameTrackerX);\n\n    port_draw_over_shown(0);\n")
 
+# Interrupt handlers run on the port's vblank thread, at the same time as
+# the game, while on PSX they interrupt it. The game clears drawTimerReturn
+# and reqDisp outside critical sections, so a handler could see a pointer
+# set and then use it after the game cleared it (seen in a cathy area).
+# The handlers read each pointer once.
+game_fixup(Game/PSX/MAIN.c
+    FIND    "    if (gameTrackerX.drawTimerReturn != NULL)\n    {\n        *gameTrackerX.drawTimerReturn = TIMER_TimeDiff(gameTrackerX.usecsStartDraw);\n"
+    REPLACE "    long *drawTimerReturn = gameTrackerX.drawTimerReturn;\n\n    if (drawTimerReturn != NULL)\n    {\n        *drawTimerReturn = TIMER_TimeDiff(gameTrackerX.usecsStartDraw);\n")
+
+game_fixup(Game/PSX/MAIN.c
+    FIND    "    if ((gameTrackerX.reqDisp != NULL) && (gameTrackerX.vblFrames > (unsigned long)gameTrackerX.frameRateLock))\n    {\n        PutDispEnv(gameTrackerX.reqDisp);\n"
+    REPLACE "    void *reqDisp = gameTrackerX.reqDisp;\n\n    if ((reqDisp != NULL) && (gameTrackerX.vblFrames > (unsigned long)gameTrackerX.frameRateLock))\n    {\n        PutDispEnv(reqDisp);\n")
+
 # Debug menu "MUSIC ON": the prototype moved it to the main menu but only
 # its (now empty) sound menu ever applied it, so it did nothing. Apply it
 # when the debug menu (game mode 4, not the pause menu) closes.
