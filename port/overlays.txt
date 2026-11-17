@@ -1,0 +1,29 @@
+# Overlays (src/Overlays/<name>) linked into the PC build.
+#
+# On PSX these are .drm modules loaded at runtime. Here their C is linked
+# statically, and when the game loads the .drm, port/src/relmod.c writes the
+# C function table over the module's MIPS one (see overlay_registry).
+#
+# An overlay not listed here disables itself in game: its module table keeps
+# an unrelocated version pointer, so the game's version checks reject it
+# (monsters of that type are not created, the cinema player does not run).
+#
+# All of soul-re's overlays are decompiled. Pieces they take from PSX
+# libraries are provided by the port:
+#   cinemax: MDEC decoding and CD streaming (port/src/mdec.c,
+#            port/src/cd_drive.c).
+#   mcardx:  the memory card library (port/src/memcard.c) and its data
+#            (port/overlays/mcardx).
+
+aluka
+alukabss
+cinemax
+hunter
+kain
+mcardx
+roninbss
+skinbos
+skinner
+walbosb
+walboss
+wallcr

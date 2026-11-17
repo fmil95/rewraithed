@@ -1,0 +1,36 @@
+# Functions in soul-re that the PC build replaces.
+#
+#   <file under soul-re/src>   <function> [<function> ...] [-D<define> ...]
+#
+# The definition of each listed function is renamed to <function>_psx in a
+# build-time copy of the file; prototypes and calls keep the original name,
+# so the whole game reaches the version in port/src (or the C runtime).
+# -D entries add extra defines for that file only.
+# A file listed with no functions is left out of the build.
+
+# Entry point: PC main() initialises PsyCross, then runs the PSX main.
+Game/PSX/PSX_G2/MAINVM.c    main
+
+# Probes dev-kit RAM at 0x80180000/0x80380000; a PC is a retail unit.
+Game/PSX/MAIN.c             CheckForDevStation ProcessArgs
+
+# Save system: the memory card stays available with -skipmenu
+# (port/src/main_hooks.c).
+Game/SAVEINFO.c             SAVE_Init
+
+# Movies: -skiplogos leaves out the boot logo movies (port/src/main_hooks.c).
+Game/CINEMA/CINEPSX.c       CINE_Play
+
+# Read-queue service: the emulated CD drive delivers sectors from here.
+Game/LOAD3D.c               LOAD_ProcessReadQueue
+
+# Overlay modules: C tables instead of relocated MIPS (port/src/relmod.c).
+Game/RELMOD.c
+Game/STREAM.c               STREAM_LoadObjectReturn
+Game/STRMLOAD.c             LOAD_LoadToAddress
+
+# The game's own mini C library; the host C runtime replaces it.
+Game/PSX/SUPPORT.c          printf sprintf vsprintf atoi strcmpi
+
+# DEBUG.c has its own isdigit(); keep it private to that file.
+Game/DEBUG.c                isdigit

@@ -1,0 +1,23 @@
+# Decomp functions replaced by their original compiled code.
+#
+# For functions whose decompiled C is not matching yet (and may not behave
+# exactly like the original), the build can use the original instead:
+# splat's asm/nonmatchings/<file>/<function>.s, recompiled to C by
+# tools/hasm2c.py. The decomp's C definition is renamed to <function>_psx.
+#
+#   <file under soul-re/src>  <function>:<args>[:ret]  [<callee>:<args> ...]
+#
+# Callees are the functions the assembly calls (jal), with their argument
+# counts. Needs soul-re's splat output (asm/), which is not in its git tree;
+# without it these entries are skipped and the decomp's C is used.
+
+# Callee spec <callee>:<args>[:<C name>]; libgte callees go to the game's own
+# recompiled routines (port_<name>, cmake/Hasm.cmake).
+
+# Game/PIPE3D.c  PIPE3D_TransformAnimatedSplitInstanceVertices:9:ret  CompMatrix:3:port_CompMatrix MulMatrix0:3:port_MulMatrix0 SetLightMatrix:1:port_SetLightMatrix SetRotMatrix:1:port_SetRotMatrix SetTransMatrix:1:port_SetTransMatrix
+
+# (The PIPE3D line above is an example; swapping it in made no visible difference.)
+#
+# Note: COLLIDE_PointAndTerrainFunc was tried and is hand-written assembly in
+# the original, with a contract that does not match its C callers; recompiling
+# it from asm/nonmatchings crashed. Prefer compiler-generated functions here.

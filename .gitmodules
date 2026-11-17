@@ -1,0 +1,6 @@
+[submodule "soul-re"]
+	path = soul-re
+	url = https://github.com/fmil95/soul-re.git
+[submodule "third_party/PsyCross"]
+	path = third_party/PsyCross
+	url = https://github.com/OpenDriver2/PsyCross.git

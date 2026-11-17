@@ -1,0 +1,23 @@
+# Game data and disc images
+*.img
+*.bin
+*.cue
+*.ccd
+*.sub
+*.iso
+BIGFILE.DAT
+
+# Build output
+/build*/
+/out/
+.vs/
+.vscode/
+*.user
+
+# Runtime output (PsyCross log and crash dumps)
+*.log
+*.dmp
+shot_*.bmp
+
+# Memory card saves
+*.mcd
