@@ -77,6 +77,13 @@ game_fixup(Game/MONSTER/MONLIB.c
     FIND    "    d = data->knockBackDistance;\n    t = data->knockBackDuration;\n"
     REPLACE "    d = (data != NULL) ? data->knockBackDistance : 0;\n    t = (data != NULL) ? data->knockBackDuration : 0;\n")
 
+# NULL read: a monster first sensing an ally instance that has no extra
+# data (seen on the water path between city19 and city9); on PSX the flag
+# test reads zero there.
+game_fixup(Game/MONSTER/MONSENSE.c
+    FIND    "            if (((Object *)sensed->extraData)->oflags & 0x100000)"
+    REPLACE "            if ((sensed->extraData != NULL) && (((Object *)sensed->extraData)->oflags & 0x100000))")
+
 # Debug menu "MUSIC ON": the prototype moved it to the main menu but only
 # its (now empty) sound menu ever applied it, so it did nothing. Apply it
 # when the debug menu (game mode 4, not the pause menu) closes.
