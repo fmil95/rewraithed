@@ -84,6 +84,13 @@ game_fixup(Game/MONSTER/MONSENSE.c
     FIND    "            if (((Object *)sensed->extraData)->oflags & 0x100000)"
     REPLACE "            if ((sensed->extraData != NULL) && (((Object *)sensed->extraData)->oflags & 0x100000))")
 
+# NULL read: with the autoface camera (R1) on, a portal whose unit is not
+# loaded has no toStreamUnit (seen among Dumahim); on PSX the unit ID read
+# there does not match, so nothing is drawn through it.
+game_fixup(Game/GAMELOOP.c
+    FIND    "                    streamID = streamPortal2->toStreamUnit->StreamUnitID;\n"
+    REPLACE "                    if (streamPortal2->toStreamUnit == NULL)\n                    {\n                        continue;\n                    }\n\n                    streamID = streamPortal2->toStreamUnit->StreamUnitID;\n")
+
 # Debug menu "MUSIC ON": the prototype moved it to the main menu but only
 # its (now empty) sound menu ever applied it, so it did nothing. Apply it
 # when the debug menu (game mode 4, not the pause menu) closes.
