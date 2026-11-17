@@ -98,6 +98,23 @@ game_fixup(Game/MONSTER/MONSTER.c
     FIND    "        if (target->distance < (range + MON_GetAnim(instance, mv->subAttr->animList, 2)->distance)) "
     REPLACE "        if (((target != NULL) ? target->distance : 0) < (range + MON_GetAnim(instance, mv->subAttr->animList, 2)->distance)) ")
 
+# Spectral death effect: the displayed page is copied and drawn over itself
+# while the underworld loads. The port puts the frame being shown into VRAM
+# first and keeps it in the window between steps (port/src/gpu_hooks.c).
+game_fixup(Game/UNDRWRLD.c
+    FIND    "    rect.h = 240;\n\n    MoveImage(&rect, 0, (UNDRWRLD_GetDispPage() ^ 1) << 8);"
+    REPLACE "    rect.h = 240;\n\n    port_store_shown_frame(rect.x, rect.y, rect.w, rect.h);\n    port_draw_over_shown(1);\n\n    MoveImage(&rect, 0, (UNDRWRLD_GetDispPage() ^ 1) << 8);")
+
+# The effect runs only while the underworld loads, which takes far less
+# time than from the PSX's CD: it keeps going for a minimum time.
+game_fixup(Game/UNDRWRLD.c
+    FIND    "    streamUnit = STREAM_LoadLevel(baseAreaName, NULL, 0);\n\n    while (STREAM_PollLoadQueue() != 0)\n    {\n        UW_time = UNDERWORLD_RotateScreenStep(UW_time);\n    }\n"
+    REPLACE "    streamUnit = STREAM_LoadLevel(baseAreaName, NULL, 0);\n\n    while ((STREAM_PollLoadQueue() != 0) || port_draw_over_shown_hold())\n    {\n        UW_time = UNDERWORLD_RotateScreenStep(UW_time);\n    }\n")
+
+game_fixup(Game/UNDRWRLD.c
+    FIND    "    UNDERWORLD_LoadLevel(\"under1\", &gameTrackerX);\n"
+    REPLACE "    UNDERWORLD_LoadLevel(\"under1\", &gameTrackerX);\n\n    port_draw_over_shown(0);\n")
+
 # Debug menu "MUSIC ON": the prototype moved it to the main menu but only
 # its (now empty) sound menu ever applied it, so it did nothing. Apply it
 # when the debug menu (game mode 4, not the pause menu) closes.

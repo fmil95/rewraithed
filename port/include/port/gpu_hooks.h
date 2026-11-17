@@ -40,4 +40,10 @@ int port_fps_locked(void);
 unsigned int port_min_frame_ms(unsigned int lockRate);
 void port_frame_limit(void);
 
+/* Drawing over the picture being shown (spectral death effect), used by
+ * UNDRWRLD.c fixups. */
+void port_store_shown_frame(int x, int y, int w, int h);
+void port_draw_over_shown(int on);
+int port_draw_over_shown_hold(void);
+
 #endif

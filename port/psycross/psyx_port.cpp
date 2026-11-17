@@ -19,6 +19,7 @@
 #include "PsyX/PsyX_public.h"
 
 extern SDL_Window *g_window;   /* PsyX_render.cpp */
+void GR_CopyRGBAFramebufferToVRAM(unsigned int *src, int x, int y, int w, int h, int update_vram, int flip_y);
 
 extern "C" {
 
@@ -175,8 +176,11 @@ void PsyX_PortBlitFromWindow(int x, int y, int w, int h)
 
     glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFbo);
 
+    /* GL_SAMPLES describes the draw framebuffer: ask about the window */
     glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
     glGetIntegerv(GL_SAMPLES, &samples);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFbo);
 
     if (samples <= 1)
     {
@@ -228,6 +232,168 @@ void PsyX_PortRequestScreenshot(void)
     screenshotPending = 1;
 }
 
+/* --- the last frame shown ---------------------------------------------------
+ * On PSX the screen is a part of VRAM, so the picture being shown can be
+ * copied, used as a texture and drawn over. PsyCross shows frames from the
+ * window, whose contents are gone after the swap, and never puts them into
+ * its VRAM copy. Each frame shown is kept here (view-sized, single-sampled)
+ * so that it can be:
+ *  - copied into VRAM (PsyX_PortStoreShownFrame), and
+ *  - put back into the window before drawing (PsyX_PortRestoreShownFrame)
+ *    when the game keeps drawing over the shown picture.
+ * Used by the spectral death effect (UNDRWRLD.c). */
+int g_port_keep_frame;  /* set by port/src/gpu_hooks.c for frames the game drew */
+
+static GLuint shownFbo;
+static GLuint shownTex;
+static int shownW, shownH;
+static int shownValid;
+
+static void keep_shown_frame(void)
+{
+    GLint readFbo = 0;
+    GLint drawFbo = 0;
+    int w = g_portViewW;
+    int h = g_portViewH;
+
+    if ((w <= 0) || (h <= 0))
+    {
+        return;
+    }
+
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFbo);
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFbo);
+
+    if (shownFbo == 0)
+    {
+        glGenFramebuffers(1, &shownFbo);
+        glGenTextures(1, &shownTex);
+    }
+
+    if ((shownW != w) || (shownH != h))
+    {
+        glBindTexture(GL_TEXTURE_2D, shownTex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, shownFbo);
+        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, shownTex, 0);
+        shownW = w;
+        shownH = h;
+    }
+
+    /* resolved if multisampled; flipped, so the texture's first row is the
+     * top of the picture */
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, shownFbo);
+    PsyX_PortBlitFromWindow(0, 0, w, h);
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFbo);
+    shownValid = 1;
+}
+
+/* Puts the last frame shown back into the window's view. Returns 0 when
+ * that cannot be done by a blit (a multisampled window cannot be blitted
+ * into); the caller then draws it from VRAM instead. */
+int PsyX_PortRestoreShownFrame(void)
+{
+    GLint readFbo = 0;
+    GLint drawFbo = 0;
+    GLint samples = 0;
+    GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
+
+    if (!shownValid || (shownW != g_portViewW) || (shownH != g_portViewH))
+    {
+        return 1;
+    }
+
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFbo);
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFbo);
+
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glGetIntegerv(GL_SAMPLES, &samples);
+
+    if (samples > 1)
+    {
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFbo);
+        return 0;
+    }
+    glDisable(GL_SCISSOR_TEST);
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, shownFbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBlitFramebuffer(0, 0, shownW, shownH, g_portViewX, g_portViewY + shownH, g_portViewX + shownW, g_portViewY,
+        GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFbo);
+
+    if (scissor)
+    {
+        glEnable(GL_SCISSOR_TEST);
+    }
+
+    return 1;
+}
+
+/* Writes the last frame shown into VRAM at (x, y, w, h), scaled to it. */
+void PsyX_PortStoreShownFrame(int x, int y, int w, int h)
+{
+    static GLuint fbo;
+    static GLuint tex;
+    static int texW, texH;
+    GLint readFbo = 0;
+    GLint drawFbo = 0;
+    GLint packAlign = 4;
+    unsigned int *pixels;
+
+    if (!shownValid || (x < 0) || (y < 0) || (w <= 0) || (h <= 0) || (x + w > 1024) || (y + h > 512))
+    {
+        return;
+    }
+
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFbo);
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFbo);
+
+    if (fbo == 0)
+    {
+        glGenFramebuffers(1, &fbo);
+        glGenTextures(1, &tex);
+    }
+
+    if ((texW != w) || (texH != h))
+    {
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
+        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+        texW = w;
+        texH = h;
+    }
+
+    /* scaled down; rows stay top first, as in VRAM */
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, shownFbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
+    glBlitFramebuffer(0, 0, shownW, shownH, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+
+    pixels = (unsigned int *)malloc((size_t)w * h * 4);
+
+    if (pixels != NULL)
+    {
+        glGetIntegerv(GL_PACK_ALIGNMENT, &packAlign);
+        glPixelStorei(GL_PACK_ALIGNMENT, 4);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+        glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        glPixelStorei(GL_PACK_ALIGNMENT, packAlign);
+
+        GR_CopyRGBAFramebufferToVRAM(pixels, x, y, w, h, 1, 0);
+        free(pixels);
+    }
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFbo);
+}
+
 void PsyX_PortBeforeSwap(void)
 {
     static GLuint fbo;
@@ -239,6 +405,14 @@ void PsyX_PortBeforeSwap(void)
     int w = g_portViewW;
     int h = g_portViewH;
     unsigned char *pixels;
+
+    /* only frames the game drew: pictures shown straight from the VRAM copy
+     * (port/src/gpu_hooks.c) would be the empty pages PsyCross keeps there */
+    if (g_port_keep_frame)
+    {
+        g_port_keep_frame = 0;
+        keep_shown_frame();
+    }
 
     if (!screenshotPending)
     {

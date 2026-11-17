@@ -50,6 +50,11 @@
 static DRAWENV port_draw_env;
 static int port_have_draw_env;
 static int port_display_dirty;
+static int port_drawing_over_shown;
+
+void PsyX_PortStoreShownFrame(int x, int y, int w, int h);   /* port/psycross/psyx_port.cpp */
+int PsyX_PortRestoreShownFrame(void);
+extern int g_port_keep_frame;
 
 extern DRAWENV activeDrawEnv;   /* PsyCross libgpu: current GPU state */
 extern DISPENV activeDispEnv;
@@ -587,16 +592,69 @@ void port_DrawOTag(u_long *p)
     /* a frame is being drawn: it shows those writes itself */
     port_display_dirty = 0;
 
+    /* PsyCross's PutDispEnv keeps the display a frame behind on purpose, so
+     * that normally the page drawn is where it puts the window; this effect
+     * draws into the page being shown, so line the display up with it (the
+     * game's next PutDispEnv sets it again) */
+    if (port_drawing_over_shown && port_have_draw_env)
+    {
+        activeDispEnv.disp.x = port_draw_env.clip.x;
+        activeDispEnv.disp.y = port_draw_env.clip.y;
+    }
+
+    if (port_drawing_over_shown && !PsyX_PortRestoreShownFrame() && port_have_draw_env)
+    {
+        /* multisampled window: through VRAM, at PSX resolution, into the
+         * area being drawn (the effect draws into the displayed page) */
+        RECT16 *d = &port_draw_env.clip;
+
+        PsyX_PortStoreShownFrame(d->x, d->y, d->w, d->h);
+        port_draw_vram_rect(&port_draw_env, d->x, d->y, d->w, d->h);
+    }
+
     DrawOTag(p);
 
     port_debug_frame();
 
+    g_port_keep_frame = 1;
     PsyX_EndScene();
+    g_port_keep_frame = 0;
 
     /* the in-game loop presents frames without calling VSync */
     PsyX_UpdateInput();
 
     port_draw_done_pending = 1;
+}
+
+/* --- drawing over the picture being shown -------------------------------------
+ * The spectral death effect (UNDRWRLD.c) copies the displayed page to the
+ * other one, then keeps drawing a rotating, shrinking copy of it over the
+ * displayed page, without clearing, while the underworld loads. The port
+ * writes the last frame shown into VRAM before that copy, and meanwhile
+ * starts each frame from the last one shown instead of an empty window
+ * (port/psycross/psyx_port.cpp). Called from fixups in UNDRWRLD.c. */
+void port_store_shown_frame(int x, int y, int w, int h)
+{
+    PsyX_PortStoreShownFrame(x, y, w, h);
+}
+
+static unsigned long port_draw_over_shown_start;
+
+void port_draw_over_shown(int on)
+{
+    port_drawing_over_shown = on;
+
+    if (on)
+    {
+        port_draw_over_shown_start = gameTrackerX.vblCount;
+    }
+}
+
+/* Loading from the PC is much quicker than from the PSX's CD, and the
+ * effect lasts as long as the load: hold it for at least 1.5 s. */
+int port_draw_over_shown_hold(void)
+{
+    return port_drawing_over_shown && ((gameTrackerX.vblCount - port_draw_over_shown_start) < 90);
 }
 
 /* --- FPS limit ------------------------------------------------------------- */
