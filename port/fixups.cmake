@@ -152,6 +152,21 @@ psycross_fixup(render/PsyX_render.cpp
     FIND    "int g_cfg_bilinearFiltering = 0;\n"
     REPLACE "int g_cfg_bilinearFiltering = 0;\nextern \"C\" {\nextern int g_cfg_dithering;\nvoid PsyX_PortSetView(void);\nvoid PsyX_PortScissor(float x, float y, float w, float h);\nvoid PsyX_PortClear(void);\nvoid PsyX_PortBeforeSwap(void);\nvoid PsyX_PortBlitFromWindow(int x, int y, int w, int h);\nint PsyX_PortTextureFilter(void);\n}\n")
 
+# Frame readback into VRAM (pictures the game renders and reuses as
+# textures, e.g. a warp gate's view of its destination): the pixels come
+# back as RGBA bytes, but the conversion took the first byte as blue, so
+# red and blue were swapped (the gate showed orange).
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "\t\t\tu_char b = ((c >> 3) & 0x1F);\n\t\t\tu_char g = ((c >> 11) & 0x1F);\n\t\t\tu_char r = ((c >> 19) & 0x1F);"
+    REPLACE "\t\t\tu_char r = ((c >> 3) & 0x1F);\n\t\t\tu_char g = ((c >> 11) & 0x1F);\n\t\t\tu_char b = ((c >> 19) & 0x1F);")
+
+# Blend mode 3 (background + 1/4 foreground) is drawn with the constant
+# alpha as the source factor, but switching blending on set it to 0.5, so
+# such polygons were twice as bright (e.g. a dying Sluagh).
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "\t\t\tglBlendColor(0.25f, 0.25f, 0.25f, 0.5f);"
+    REPLACE "\t\t\tglBlendColor(0.25f, 0.25f, 0.25f, 0.25f);")
+
 # Screenshot key (F12): PsyCross saved one upside-down SCREENSHOT.BMP in
 # the working folder, read after the frame was shown. The port takes it
 # from the next frame before it is shown (port/psycross/psyx_port.cpp) and
