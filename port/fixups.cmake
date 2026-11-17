@@ -91,6 +91,13 @@ game_fixup(Game/GAMELOOP.c
     FIND    "                    streamID = streamPortal2->toStreamUnit->StreamUnitID;\n"
     REPLACE "                    if (streamPortal2->toStreamUnit == NULL)\n                    {\n                        continue;\n                    }\n\n                    streamID = streamPortal2->toStreamUnit->StreamUnitID;\n")
 
+# NULL read: a monster heading back to its post or last valid position
+# (e.g. after being thrown into water by the Force Glyph) has no target,
+# but the pursue code still reads its distance; on PSX that reads zero.
+game_fixup(Game/MONSTER/MONSTER.c
+    FIND    "        if (target->distance < (range + MON_GetAnim(instance, mv->subAttr->animList, 2)->distance)) "
+    REPLACE "        if (((target != NULL) ? target->distance : 0) < (range + MON_GetAnim(instance, mv->subAttr->animList, 2)->distance)) ")
+
 # Debug menu "MUSIC ON": the prototype moved it to the main menu but only
 # its (now empty) sound menu ever applied it, so it did nothing. Apply it
 # when the debug menu (game mode 4, not the pause menu) closes.
