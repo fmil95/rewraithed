@@ -70,6 +70,20 @@ game_fixup(Overlays/alukabss/alukabss.c
     FIND    "    localloc = data->location;\n"
     REPLACE "    if (data != NULL)\n    {\n        localloc = data->location;\n    }\n")
 
+# NULL read: monsters killed by something that is not a hit message (diving
+# out of water next to them, the Force Glyph) get knocked back with no hit
+# data; on PSX that reads zeros, i.e. no knockback.
+game_fixup(Game/MONSTER/MONLIB.c
+    FIND    "    d = data->knockBackDistance;\n    t = data->knockBackDuration;\n"
+    REPLACE "    d = (data != NULL) ? data->knockBackDistance : 0;\n    t = (data != NULL) ? data->knockBackDuration : 0;\n")
+
+# Debug menu "MUSIC ON": the prototype moved it to the main menu but only
+# its (now empty) sound menu ever applied it, so it did nothing. Apply it
+# when the debug menu (game mode 4, not the pause menu) closes.
+game_fixup(Game/DEBUG.c
+    FIND    "    currentMenu[DEBUG_MenuCountLength(currentMenu)].lower = debugMenuChoice;\n\n    if (gameTrackerX.sound.gMusicOn == 0)\n"
+    REPLACE "    currentMenu[DEBUG_MenuCountLength(currentMenu)].lower = debugMenuChoice;\n\n    if (gameTrackerX.gameMode == 4)\n    {\n        gameTrackerX.sound.gMusicOn = (gameTrackerX.debugFlags2 & 0x1000) != 0;\n    }\n\n    if (gameTrackerX.sound.gMusicOn == 0)\n")
+
 # --- PsyCross ----------------------------------------------------------------
 # psycross_fixup(<file under PsyCross/src> FIND <text> REPLACE <text>)
 # Behaviour PsyCross does not reproduce from the PSX hardware.
