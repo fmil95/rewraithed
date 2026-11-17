@@ -94,6 +94,13 @@ psycross_fixup(render/PsyX_render.cpp
     FIND    "void GR_CopyVRAM(unsigned short* src, int x, int y, int w, int h, int dst_x, int dst_y)\n{\n\tvram_need_update = 1;\n"
     REPLACE "void GR_CopyVRAM(unsigned short* src, int x, int y, int w, int h, int dst_x, int dst_y)\n{\n\tvram_need_update = 1;\n\n\tdst_x &= VRAM_WIDTH - 1;\n\tdst_y &= VRAM_HEIGHT - 1;\n\tif (!src)\n\t{\n\t\tx &= VRAM_WIDTH - 1;\n\t\ty &= VRAM_HEIGHT - 1;\n\t\tif (x + w > VRAM_WIDTH) w = VRAM_WIDTH - x;\n\t\tif (y + h > VRAM_HEIGHT) h = VRAM_HEIGHT - y;\n\t}\n\tif (dst_x + w > VRAM_WIDTH) w = VRAM_WIDTH - dst_x;\n\tif (dst_y + h > VRAM_HEIGHT) h = VRAM_HEIGHT - dst_y;\n\tif (w <= 0 || h <= 0)\n\t\treturn;\n")
 
+# Frame readback at the display area: the debug menu's VIEW VRAM moves the
+# display around VRAM and lets it go 32 pixels past either edge, where the
+# readback asserts. Skip the readback while the area is not inside VRAM.
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "void GR_StoreFrameBuffer(int x, int y, int w, int h)\n{\n#if USE_OPENGL\n"
+    REPLACE "void GR_StoreFrameBuffer(int x, int y, int w, int h)\n{\n\tif (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > VRAM_WIDTH || y + h > VRAM_HEIGHT)\n\t\treturn;\n\n#if USE_OPENGL\n")
+
 # GPU packets: the hardware reads the tag, then `len` command words back to
 # back, each sized by its own opcode. PsyCross assumes one tag per command,
 # but Soul Reaver packs several commands per packet (e.g. a texture-page word
