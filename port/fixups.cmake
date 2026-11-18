@@ -167,6 +167,14 @@ game_fixup(Game/RAZIEL/PUPPET.c
     FIND    "                if ((*PadData & 0x4))\n                {\n                    WARPGATE_IncrementIndex();\n                }\n\n                if ((*PadData & 0x8))\n                {\n                    WARPGATE_DecrementIndex();\n                }"
     REPLACE "                if ((*PadData & 0x4))\n                {\n                    WARPGATE_DecrementIndex();\n                }\n\n                if ((*PadData & 0x8))\n                {\n                    WARPGATE_IncrementIndex();\n                }")
 
+# NULL read: STREAM_NoMonsters (the roninbss fight) unloads monsters with
+# STREAM_DumpMonster, which frees the object but leaves its tracker marked
+# used; the next cleanup reads the NULL object's flags. On PSX that reads
+# zero and the tracker is then freed; a NULL object counts as flags 0.
+game_fixup(Game/STREAM.c
+    FIND    "            if ((!(object->oflags & 0x2000000)) && (STREAM_IsObjectInAnyUnit(tracker) == 0) && (STREAM_IsAnInstanceUsingObject(object) == 0))"
+    REPLACE "            if (((object == NULL) || (!(object->oflags & 0x2000000))) && (STREAM_IsObjectInAnyUnit(tracker) == 0) && (STREAM_IsAnInstanceUsingObject(object) == 0))")
+
 # Debug menu "MUSIC ON": the prototype moved it to the main menu but only
 # its (now empty) sound menu ever applied it, so it did nothing. Apply it
 # when the debug menu (game mode 4, not the pause menu) closes.
