@@ -128,6 +128,13 @@ game_fixup(Game/PSX/MAIN.c
     FIND    "    if ((gameTrackerX.reqDisp != NULL) && (gameTrackerX.vblFrames > (unsigned long)gameTrackerX.frameRateLock))\n    {\n        PutDispEnv(gameTrackerX.reqDisp);\n"
     REPLACE "    void *reqDisp = gameTrackerX.reqDisp;\n\n    if ((reqDisp != NULL) && (gameTrackerX.vblFrames > (unsigned long)gameTrackerX.frameRateLock))\n    {\n        PutDispEnv(reqDisp);\n")
 
+# Glyph menu: glyphs on the left half of the ring were sized from an
+# uninitialised local; the original loads 4096 in both branches (on PC the
+# stack garbage made them too small, e.g. the Force glyph).
+game_fixup(Game/GLYPH.c
+    FIND    "            scale_modify = temp + (AngleDiff(rot, 3072) << 1); // bug in the original code?"
+    REPLACE "            temp = 4096;\n\n            scale_modify = temp + (AngleDiff(rot, 3072) << 1);")
+
 # Debug menu "MUSIC ON": the prototype moved it to the main menu but only
 # its (now empty) sound menu ever applied it, so it did nothing. Apply it
 # when the debug menu (game mode 4, not the pause menu) closes.
