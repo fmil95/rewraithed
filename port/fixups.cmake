@@ -48,13 +48,10 @@ game_fixup(Game/GAMELOOP.c
     REPLACE "    port_frame_limit();\n\n    if (port_fps_locked() && (gameTracker->vblFrames <= (unsigned long)gameTracker->frameRateLock))\n    {\n        while (CheckVolatile(gameTracker->reqDisp) != 0)")
 
 # Preload Chunks (launcher setting): the units next to the one entered are
-# loaded right away instead of in the background. This waits once the move
-# into the new unit is complete: waiting inside it (where the loads are
-# queued) finished loads before the unit was set up, and the object
-# cleanup that follows met trackers not yet filled in (seen at roninbss).
+# loaded right away instead of in the background.
 game_fixup(Game/STREAM.c
-    FIND    "    gameTrackerX.SwitchToNewStreamUnit = 0;\n\n    if (gameTrackerX.SwitchToNewWarpIndex != -1)\n    {\n        SndPlayVolPan(388, 127, 64, 0);\n\n        CurrentWarpNumber = gameTrackerX.SwitchToNewWarpIndex;\n    }\n}\n"
-    REPLACE "    gameTrackerX.SwitchToNewStreamUnit = 0;\n\n    if (gameTrackerX.SwitchToNewWarpIndex != -1)\n    {\n        SndPlayVolPan(388, 127, 64, 0);\n\n        CurrentWarpNumber = gameTrackerX.SwitchToNewWarpIndex;\n    }\n\n    port_preload_wait();\n}\n")
+    FIND    "                STREAM_LoadLevel(text, stream, 1);\n            }\n        }\n    }\n}\n"
+    REPLACE "                STREAM_LoadLevel(text, stream, 1);\n            }\n        }\n    }\n\n    port_preload_wait();\n}\n")
 
 # NULL read: blinking menu items (flashStart) pass NULL text on "off" frames.
 game_fixup(Game/MENU/MENU.c
