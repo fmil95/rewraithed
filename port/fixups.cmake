@@ -135,6 +135,17 @@ game_fixup(Game/GLYPH.c
     FIND    "            scale_modify = temp + (AngleDiff(rot, 3072) << 1); // bug in the original code?"
     REPLACE "            temp = 4096;\n\n            scale_modify = temp + (AngleDiff(rot, 3072) << 1);")
 
+# Texels past a polygon's bottom edge: at scales such as 4.5x (240 lines
+# shown 1080 high) some polygon edges fall exactly on a row of pixel
+# centres. OpenGL draws such a row on the bottom edge (in window
+# coordinates its lower edge), where the texture coordinate equals the
+# exclusive end the PSX never samples: a thin line from the next texture
+# row appeared under letters of the menus. Pixels are sampled a hundredth
+# of a pixel up, inside the polygon, which only changes those on an edge.
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "\t\"\t\tvec2 rg = samplePSX(P);\\n\"\\\n"
+    REPLACE "\t\"\t\tvec2 rg = samplePSX(P + 0.01 * dFdy(P));\\n\"\\\n")
+
 # Debug menu "MUSIC ON": the prototype moved it to the main menu but only
 # its (now empty) sound menu ever applied it, so it did nothing. Apply it
 # when the debug menu (game mode 4, not the pause menu) closes.
