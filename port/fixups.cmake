@@ -154,6 +154,16 @@ game_fixup(Game/MONSTER/MONSTER.c
     FIND    "    mv = (MonsterVars *)instance->extraData;\n\n    if (data == NULL)\n    {\n        MonsterAttributes *ma;\n"
     REPLACE "    mv = (MonsterVars *)instance->extraData;\n\n    if ((data == NULL) && (instance->matrix == NULL))\n    {\n        return;\n    }\n\n    if (data == NULL)\n    {\n        MonsterAttributes *ma;\n")
 
+# Warp gate destinations: on the PSX (checked on DuckStation) Right steps
+# forward through the destinations and Left back. The decompiled handler,
+# like the disassembly, calls IncrementIndex on pad bit 0x4 (Left in the
+# port's input, which walks Raziel left correctly), so the port went the
+# other way. Where the original's input differs has not been found; the
+# calls are swapped to match the console.
+game_fixup(Game/RAZIEL/PUPPET.c
+    FIND    "                if ((*PadData & 0x4))\n                {\n                    WARPGATE_IncrementIndex();\n                }\n\n                if ((*PadData & 0x8))\n                {\n                    WARPGATE_DecrementIndex();\n                }"
+    REPLACE "                if ((*PadData & 0x4))\n                {\n                    WARPGATE_DecrementIndex();\n                }\n\n                if ((*PadData & 0x8))\n                {\n                    WARPGATE_IncrementIndex();\n                }")
+
 # Debug menu "MUSIC ON": the prototype moved it to the main menu but only
 # its (now empty) sound menu ever applied it, so it did nothing. Apply it
 # when the debug menu (game mode 4, not the pause menu) closes.
