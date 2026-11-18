@@ -18,10 +18,12 @@ const char *const port_bind_names[BIND_COUNT] = {
     "Select", "Start",
 };
 
-/* PsyCross's keyboard defaults, as SDL scancode names */
+/* Keyboard defaults, as SDL scancode names. The face buttons are on Z X S D
+ * rather than PsyCross's C V X Z: many keyboards cannot report Z together
+ * with both Ctrl keys (L2 + R2 + Triangle aims force projectiles). */
 static const char *const default_keys[BIND_COUNT] = {
     "Up", "Down", "Left", "Right",
-    "C", "V", "X", "Z",
+    "Z", "X", "S", "D",
     "Left Shift", "Left Ctrl", "Right Shift", "Right Ctrl",
     "Space", "Return",
 };

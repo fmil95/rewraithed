@@ -156,7 +156,7 @@ static void build_ui(HWND hwnd)
     label(hwnd, L"Enable Debug Menu", 336, y, 120);
     yes_no(hwnd, 460, y, ID_DEBUG_YES);
     y += 26;
-    control(hwnd, L"STATIC", L"In game, press Square and Circle at the same time (X and V on the keyboard by default).",
+    control(hwnd, L"STATIC", L"In game, press Square and Circle at the same time (S and X on the keyboard by default).",
         0, 336, y, 292, 32, 0);
     y += 40;
     label(hwnd, L"Enable Logging", 336, y, 120);
