@@ -146,6 +146,14 @@ psycross_fixup(render/PsyX_render.cpp
     FIND    "\t\"\t\tvec2 rg = samplePSX(P);\\n\"\\\n"
     REPLACE "\t\"\t\tvec2 rg = samplePSX(P + 0.01 * dFdy(P));\\n\"\\\n")
 
+# NULL read: a damaged monster's blood and spark effects read a segment
+# position from its matrices, which it may not have that frame (the Tomb
+# Guardian while Raziel shifted back to the material realm); on PSX that
+# reads low RAM. Skip the effects without matrices.
+game_fixup(Game/MONSTER/MONSTER.c
+    FIND    "    mv = (MonsterVars *)instance->extraData;\n\n    if (data == NULL)\n    {\n        MonsterAttributes *ma;\n"
+    REPLACE "    mv = (MonsterVars *)instance->extraData;\n\n    if ((data == NULL) && (instance->matrix == NULL))\n    {\n        return;\n    }\n\n    if (data == NULL)\n    {\n        MonsterAttributes *ma;\n")
+
 # Debug menu "MUSIC ON": the prototype moved it to the main menu but only
 # its (now empty) sound menu ever applied it, so it did nothing. Apply it
 # when the debug menu (game mode 4, not the pause menu) closes.
