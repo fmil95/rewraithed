@@ -180,6 +180,14 @@ game_fixup(Game/STREAM.c
     FIND    "    MEMPACK_Free((char *)object);\n\n    dumpee->object = NULL;\n}\n"
     REPLACE "    MEMPACK_Free((char *)object);\n\n    dumpee->object = NULL;\n\n    dumpee->objectStatus = OBJECTTRACKER_UNUSED;\n}\n")
 
+# NULL read: a playing periodic sound whose channel number is out of range
+# gets no channel from SndGetSfxChannel, and unlike the other callers this
+# one read its handle without checking (Sunlight Glyph room). On PSX that
+# reads zero, handle 0 = "not playing", and the sound is turned off.
+game_fixup(Game/SOUND.c
+    FIND    "    case 2:\n        channel = SndGetSfxChannel(soundInst->channel);\n\n        if (SndIsPlayingOrRequested(channel->handle) == 0)\n        {\n            setPeriodicSoundStateOff(soundInst, sound);"
+    REPLACE "    case 2:\n        channel = SndGetSfxChannel(soundInst->channel);\n\n        if ((channel == NULL) || (SndIsPlayingOrRequested(channel->handle) == 0))\n        {\n            setPeriodicSoundStateOff(soundInst, sound);")
+
 # Debug menu "MUSIC ON": the prototype moved it to the main menu but only
 # its (now empty) sound menu ever applied it, so it did nothing. Apply it
 # when the debug menu (game mode 4, not the pause menu) closes.
