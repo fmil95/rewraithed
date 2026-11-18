@@ -14,11 +14,16 @@
 
 #include <SDL.h>
 
+#include "psx/types.h"
+#include "psx/libgte.h"
+#include "psx/libgpu.h"
+
 #include "PsyX/common/glad.h"
 #include "PsyX/PsyX_globals.h"
 #include "PsyX/PsyX_public.h"
 
 extern SDL_Window *g_window;   /* PsyX_render.cpp */
+extern "C" DISPENV activeDispEnv;   /* PsyX_GPU.cpp */
 void GR_CopyRGBAFramebufferToVRAM(unsigned int *src, int x, int y, int w, int h, int update_vram, int flip_y);
 
 extern "C" {
@@ -470,6 +475,34 @@ void PsyX_PortBeforeSwap(void)
 
     glBindFramebuffer(GL_READ_FRAMEBUFFER, readFbo);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFbo);
+}
+
+/* Window pixels per PSX pixel for the dither pattern of the next draw:
+ * 1 off screen (drawn at PSX resolution), else view height / PSX height. */
+void PsyX_PortSetDitherScale(int onScreen)
+{
+    GLint program = 0;
+    GLint loc;
+    float scale = 1.0f;
+
+    if (onScreen && (activeDispEnv.disp.h > 0) && (g_portViewH > 0))
+    {
+        scale = (float)g_portViewH / (float)activeDispEnv.disp.h;
+    }
+
+    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+
+    if (program == 0)
+    {
+        return;
+    }
+
+    loc = glGetUniformLocation((GLuint)program, "ditherScale");
+
+    if (loc >= 0)
+    {
+        glUniform1f(loc, scale);
+    }
 }
 
 int PsyX_PortTextureFilter(void)

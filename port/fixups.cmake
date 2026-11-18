@@ -211,6 +211,28 @@ psycross_fixup(render/PsyX_render.cpp
     FIND    "\t\t\tglBlendColor(0.25f, 0.25f, 0.25f, 0.5f);"
     REPLACE "\t\t\tglBlendColor(0.25f, 0.25f, 0.25f, 0.25f);")
 
+# Dithering in PSX pixels: PsyCross applied the 4x4 dither pattern per
+# window pixel. Pictures the game renders and reuses at PSX resolution (the
+# warp gate's view of its destination) then sampled that fine pattern into
+# a coarse checker. The pattern is now scaled to PSX pixels (ditherScale:
+# window pixels per PSX pixel when drawing on screen, 1 off screen), as on
+# the console and like DuckStation's default "scaled dithering".
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "\t\t\"\t\tivec2 dc = ivec2(fract(gl_FragCoord.xy / 4.0) * 4.0);\\n\"\\\n"
+    REPLACE "\t\t\"\t\tivec2 dc = ivec2(mod(floor(gl_FragCoord.xy / max(ditherScale, 1.0)), 4.0));\\n\"\\\n")
+
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "\t\t\"\tvec4 dither(vec4 color) {\\n\"\\\n\t\t\"\t\tivec2 dc"
+    REPLACE "\t\t\"\tuniform float ditherScale;\\n\"\\\n\t\t\"\tvec4 dither(vec4 color) {\\n\"\\\n\t\t\"\t\tivec2 dc")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "\tGR_SetBlendMode(split.blendMode);\n\n\tGR_DrawTriangles(split.startVertex, split.numVerts / 3);"
+    REPLACE "\tGR_SetBlendMode(split.blendMode);\n\n\tPsyX_PortSetDitherScale(drawOnScreen);\n\tGR_DrawTriangles(split.startVertex, split.numVerts / 3);")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "static void AddSplit(bool semiTrans, bool textured)\n{"
+    REPLACE "extern \"C\" void PsyX_PortSetDitherScale(int onScreen);\n\nstatic void AddSplit(bool semiTrans, bool textured)\n{")
+
 # Screenshot key (F12): PsyCross saved one upside-down SCREENSHOT.BMP in
 # the working folder, read after the frame was shown. The port takes it
 # from the next frame before it is shown (port/psycross/psyx_port.cpp) and
