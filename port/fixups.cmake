@@ -172,6 +172,14 @@ game_fixup(Game/STREAM.c
     FIND    "            if ((!(object->oflags & 0x2000000)) && (STREAM_IsObjectInAnyUnit(tracker) == 0) && (STREAM_IsAnInstanceUsingObject(object) == 0))"
     REPLACE "            if (((object == NULL) || (!(object->oflags & 0x2000000))) && (STREAM_IsObjectInAnyUnit(tracker) == 0) && (STREAM_IsAnInstanceUsingObject(object) == 0))")
 
+# STREAM_DumpMonster frees a monster but left its tracker marked used with
+# no object, so the next time the monster was introduced (looked up by
+# name) its NULL object was used (INSTANCE_IntroduceInstance, roninbss).
+# The tracker is freed with the object, so the monster is loaded again.
+game_fixup(Game/STREAM.c
+    FIND    "    MEMPACK_Free((char *)object);\n\n    dumpee->object = NULL;\n}\n"
+    REPLACE "    MEMPACK_Free((char *)object);\n\n    dumpee->object = NULL;\n\n    dumpee->objectStatus = OBJECTTRACKER_UNUSED;\n}\n")
+
 # Debug menu "MUSIC ON": the prototype moved it to the main menu but only
 # its (now empty) sound menu ever applied it, so it did nothing. Apply it
 # when the debug menu (game mode 4, not the pause menu) closes.
