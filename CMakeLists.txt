@@ -5,6 +5,11 @@ project(rewraithed LANGUAGES C CXX)
 # Shown by the launcher; bump with each release (v0.99c is Beta 3).
 set(REWRAITHED_VERSION "0.99c")
 
+# Discord Rich Presence: the Application ID of the "Rewraithed" application
+# in the Discord Developer Portal (discord.com/developers/applications).
+# Empty leaves Rich Presence out.
+set(REWRAITHED_DISCORD_APP_ID "1573080556147576943")
+
 # The decompiled game stores pointers in 32-bit fields and links GPU primitives
 # through 24-bit addresses, so the port is 32-bit only for now.
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)

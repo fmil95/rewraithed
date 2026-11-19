@@ -20,6 +20,7 @@ extern void port_gpu_init(void);
 extern void port_cd_set_image(const char *path);
 extern void port_install_crash_handler(void);
 extern void port_irq_init(void);
+extern void port_discord_init(void);
 
 /* port/src/native/disc_folder_win32.c: the "disc" folder next to the exe */
 extern void port_disc_folder(char *out, size_t size);
@@ -309,6 +310,7 @@ int main(int argc, char **argv)
     port_irq_init();
     port_hasm_init();
     port_gpu_init();
+    port_discord_init();
 
     main_psx();
 

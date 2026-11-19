@@ -51,6 +51,7 @@ void port_settings_defaults(PortSettings *s)
     s->debugMenu = 0;
     s->logging = 0;
     s->fpsLimit = 30;
+    s->discordPresence = 1;
 
     for (i = 0; i < BIND_COUNT; i++)
     {
@@ -201,6 +202,7 @@ int port_settings_load(PortSettings *s, const char *path)
         else if (_stricmp(key, "DebugMenu") == 0)       s->debugMenu = yes(value);
         else if (_stricmp(key, "Logging") == 0)         s->logging = yes(value);
         else if (_stricmp(key, "FPSLimit") == 0)        s->fpsLimit = atoi(value);
+        else if (_stricmp(key, "DiscordPresence") == 0) s->discordPresence = yes(value);
     }
 
     fclose(f);
@@ -249,6 +251,7 @@ int port_settings_save(const PortSettings *s, const char *path)
     fprintf(f, "DebugMenu=%s\n", s->debugMenu ? "Yes" : "No");
     fprintf(f, "Logging=%s\n", s->logging ? "Yes" : "No");
     fprintf(f, "FPSLimit=%d\n", s->fpsLimit);
+    fprintf(f, "DiscordPresence=%s\n", s->discordPresence ? "Yes" : "No");
 
     fprintf(f, "\n[Keys]\n");
 

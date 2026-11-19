@@ -41,6 +41,7 @@ typedef struct
     int debugMenu;          /* Square + Circle in game */
     int logging;            /* rewraithed.log */
     int fpsLimit;           /* 0 = unlimited */
+    int discordPresence;    /* Discord Rich Presence */
 
     /* keyboard: SDL scancode names */
     char keys[BIND_COUNT][24];

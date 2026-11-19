@@ -23,7 +23,7 @@ enum
     ID_VSYNC_YES, ID_VSYNC_NO, ID_PILLAR_YES, ID_PILLAR_NO,
     ID_FILTERING, ID_AA, ID_AREA,
     ID_SKIP, ID_DITHER, ID_PRELOAD_YES, ID_PRELOAD_NO, ID_DEBUG_YES, ID_DEBUG_NO,
-    ID_LOG_YES, ID_LOG_NO, ID_FPS, ID_CONTROLS,
+    ID_LOG_YES, ID_LOG_NO, ID_DISCORD_YES, ID_DISCORD_NO, ID_FPS, ID_CONTROLS,
     ID_PLAY, ID_SAVE, ID_EXIT,
 };
 
@@ -131,7 +131,11 @@ static void build_ui(HWND hwnd)
 {
     static const wchar_t debug_tip[] =
         L"Opens the game's debug menu. In game, press Square and Circle at the same time (S and X on the keyboard by default).";
+    static const wchar_t discord_tip[] =
+        L"Shows on your Discord profile that you are playing Rewraithed, with the area you are in and the realm. "
+        L"Needs the Discord app running on this PC.";
     HWND debug_label;
+    HWND discord_label;
     int y;
     int i;
 
@@ -187,6 +191,12 @@ static void build_ui(HWND hwnd)
     y += 36;
     label(hwnd, L"Enable Logging", 336, y, 120);
     yes_no(hwnd, 460, y, ID_LOG_YES);
+    y += 36;
+    discord_label = control(hwnd, L"STATIC", L"Discord Rich Presence", SS_CENTERIMAGE | SS_NOTIFY, 336, y, 120, 24, 0);
+    yes_no(hwnd, 460, y, ID_DISCORD_YES);
+    tooltip(hwnd, discord_label, discord_tip);
+    tooltip(hwnd, GetDlgItem(hwnd, ID_DISCORD_YES), discord_tip);
+    tooltip(hwnd, GetDlgItem(hwnd, ID_DISCORD_NO), discord_tip);
     y += 36;
     label(hwnd, L"FPS Limit", 336, y, 120);
     combo(hwnd, 460, y, 168, ID_FPS);
@@ -308,6 +318,7 @@ static void show_settings(void)
     yes_no_set(ID_PRELOAD_YES, settings.preloadChunks);
     yes_no_set(ID_DEBUG_YES, settings.debugMenu);
     yes_no_set(ID_LOG_YES, settings.logging);
+    yes_no_set(ID_DISCORD_YES, settings.discordPresence);
 
     sel = 1;
 
@@ -347,6 +358,7 @@ static void read_settings(void)
     settings.preloadChunks = yes_no_get(ID_PRELOAD_YES);
     settings.debugMenu = yes_no_get(ID_DEBUG_YES);
     settings.logging = yes_no_get(ID_LOG_YES);
+    settings.discordPresence = yes_no_get(ID_DISCORD_YES);
     settings.fpsLimit = fps_values[combo_get(ID_FPS)];
 }
 
@@ -418,11 +430,12 @@ static LRESULT CALLBACK main_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         case ID_PRELOAD_YES: case ID_PRELOAD_NO:
         case ID_DEBUG_YES: case ID_DEBUG_NO:
         case ID_LOG_YES: case ID_LOG_NO:
+        case ID_DISCORD_YES: case ID_DISCORD_NO:
         {
             /* Yes ids are even offsets from ID_VSYNC_YES */
             int yesId = ((id - ID_VSYNC_YES) % 2 == 0) ? id : id - 1;
 
-            if ((id >= ID_PRELOAD_YES) && (id <= ID_LOG_NO))
+            if ((id >= ID_PRELOAD_YES) && (id <= ID_DISCORD_NO))
             {
                 yesId = ((id - ID_PRELOAD_YES) % 2 == 0) ? id : id - 1;
             }
