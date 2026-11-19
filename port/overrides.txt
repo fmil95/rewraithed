@@ -22,7 +22,9 @@ Game/SAVEINFO.c             SAVE_Init
 Game/CINEMA/CINEPSX.c       CINE_Play
 
 # Read-queue service: the emulated CD drive delivers sectors from here.
-Game/LOAD3D.c               LOAD_ProcessReadQueue
+# Bigfile lookups: files in the "mods" folder replace BIGFILE.DAT entries
+# (port/src/mod_files.c).
+Game/LOAD3D.c               LOAD_ProcessReadQueue LOAD_InitCdLoader LOAD_GetBigFileEntryByHash
 
 # Overlay modules: C tables instead of relocated MIPS (port/src/relmod.c).
 Game/RELMOD.c

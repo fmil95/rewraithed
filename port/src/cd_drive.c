@@ -97,8 +97,48 @@ static int loc_to_lba(const CdlLOC *loc)
     return ((m * 60) + s) * 75 + f - PREGAP_SECTORS;
 }
 
+int port_cd_image_sectors(void)
+{
+    return (int)cd_image_sectors;
+}
+
+static unsigned char to_bcd(int v)
+{
+    return (unsigned char)(((v / 10) << 4) | (v % 10));
+}
+
+/* A Mode 2 Form 1 sector for a file in the mods folder (port/src/mod_files.c):
+ * sync, the header the loader checks against the sector it asked for, a data
+ * subheader and the 2048 bytes. */
+static int read_mod_sector(int lba)
+{
+    const unsigned char *data = port_mod_sector(lba);
+    int pos = lba + PREGAP_SECTORS;
+
+    if (data == NULL)
+    {
+        return 0;
+    }
+
+    memset(cd_sector, 0, sizeof(cd_sector));
+    memset(cd_sector + 1, 0xFF, 10);
+    cd_sector[12] = to_bcd(pos / (60 * 75));
+    cd_sector[13] = to_bcd((pos / 75) % 60);
+    cd_sector[14] = to_bcd(pos % 75);
+    cd_sector[15] = 2;
+    cd_sector[18] = cd_sector[22] = 0x08;   /* submode: data */
+    memcpy(cd_sector + 24, data, 2048);
+
+    return 1;
+}
+
 static void read_raw_sector(int lba)
 {
+    if ((lba >= cd_image_sectors) && read_mod_sector(lba))
+    {
+        return;
+    }
+
     if ((cd_image == NULL) || (lba < 0) || (lba >= cd_image_sectors))
     {
         memset(cd_sector, 0, sizeof(cd_sector));

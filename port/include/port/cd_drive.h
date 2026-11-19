@@ -44,6 +44,11 @@ void port_preload_wait(void);
 
 /* sector the drive is at (streams advance in real time) */
 int port_cd_position(void);
+
+/* sectors in the disc image; files from the mods folder are served from
+ * virtual sectors behind it (port/src/mod_files.c) */
+int port_cd_image_sectors(void);
+const unsigned char *port_mod_sector(int lba);
 void port_movie_present(void);
 
 #endif

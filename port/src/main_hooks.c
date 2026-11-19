@@ -31,7 +31,8 @@ void CheckForDevStation(void)
  *   -skiplogos     leave out the publisher and developer logo movies
  *                  (see CINE_Play below)
  *   -debugmenu     unlock the debug menu (Square + Circle in game)
- *   -material      start in the material realm instead of the spectral one */
+ *   -material      start in the material realm instead of the spectral one
+ *   -skipcutscene  skip the start area's in-engine cutscene (e.g. under1's) */
 void ProcessArgs(char *baseAreaName, GameTracker *gameTracker)
 {
     const char *area;
@@ -61,6 +62,14 @@ void ProcessArgs(char *baseAreaName, GameTracker *gameTracker)
     if (port_has_flag("-material"))
     {
         gameTracker->gameData.asmData.MorphType = 0;
+    }
+
+    /* The debug menu's "Skip First Puppet Show": level event scripts test
+     * this bit (ATTR_SKIP_PUPPET_SHOW in EVENT.c) and leave out their
+     * cutscene. Nothing clears it. */
+    if (port_has_flag("-skipcutscene"))
+    {
+        gameTracker->streamFlags |= 0x800000;
     }
 
     /* The debug menu opens on Square + Circle only if debugFlags 0x40000
