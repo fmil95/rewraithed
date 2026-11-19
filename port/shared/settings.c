@@ -18,15 +18,28 @@ const char *const port_bind_names[BIND_COUNT] = {
     "Select", "Start",
 };
 
-/* Keyboard defaults, as SDL scancode names. The face buttons are on Z X S D
- * rather than PsyCross's C V X Z: many keyboards cannot report Z together
- * with both Ctrl keys (L2 + R2 + Triangle aims force projectiles). */
+/* Keyboard defaults, as SDL scancode names: WASD (or the arrows) to move,
+ * Space jumps (Cross), F feeds (Circle), V attacks (Square), R is
+ * telekinesis (Triangle), C crouches (L1), Q and E look around (L2, R2),
+ * Left Shift is stealth (R1), Tab the glyph menu (Select), Escape pauses
+ * (Start). Aiming is L2 + R2 + Triangle; the Ctrl keys are left out, as many
+ * keyboards cannot report three keys with both of them. */
 static const char *const default_keys[BIND_COUNT] = {
-    "Up", "Down", "Left", "Right",
-    "Z", "X", "S", "D",
-    "Left Shift", "Left Ctrl", "Right Shift", "Right Ctrl",
-    "Space", "Return",
+    "W", "S", "A", "D",
+    "Space", "F", "V", "R",
+    "C", "Q", "Left Shift", "E",
+    "Tab", "Escape",
 };
+
+static const char *const default_keys2[BIND_COUNT] = {
+    "Up", "Down", "Left", "Right",
+    "", "", "", "",
+    "", "", "", "",
+    "", "",
+};
+
+const char *const port_mouse_action_names[MOUSE_COUNT] = { "Attack", "Telekinesis", "Aim" };
+const char *const port_mouse_button_names[MOUSE_BUTTON_COUNT] = { "None", "Left", "Middle", "Right", "X1", "X2" };
 
 static const char *const display_names[] = { "Windowed", "Fullscreen", "Borderless" };
 
@@ -57,7 +70,12 @@ void port_settings_defaults(PortSettings *s)
     for (i = 0; i < BIND_COUNT; i++)
     {
         strncpy(s->keys[i], default_keys[i], sizeof(s->keys[i]) - 1);
+        strncpy(s->keys2[i], default_keys2[i], sizeof(s->keys2[i]) - 1);
     }
+
+    s->mouse[MOUSE_ATTACK] = MOUSE_LEFT;
+    s->mouse[MOUSE_TELEKINESIS] = MOUSE_MIDDLE;
+    s->mouse[MOUSE_AIM] = MOUSE_RIGHT;
 }
 
 void port_settings_path(char *out, size_t size)
@@ -153,6 +171,42 @@ int port_settings_load(PortSettings *s, const char *path)
         *eq = '\0';
         key = trim(p);
         value = trim(eq + 1);
+
+        if (_stricmp(section, "Alternate Keys") == 0)
+        {
+            for (i = 0; i < BIND_COUNT; i++)
+            {
+                if (_stricmp(key, port_bind_names[i]) == 0)
+                {
+                    snprintf(s->keys2[i], sizeof(s->keys2[i]), "%s", value);
+                }
+            }
+
+            continue;
+        }
+
+        if (_stricmp(section, "Mouse") == 0)
+        {
+            int b;
+
+            for (i = 0; i < MOUSE_COUNT; i++)
+            {
+                if (_stricmp(key, port_mouse_action_names[i]) != 0)
+                {
+                    continue;
+                }
+
+                for (b = 0; b < MOUSE_BUTTON_COUNT; b++)
+                {
+                    if (_stricmp(value, port_mouse_button_names[b]) == 0)
+                    {
+                        s->mouse[i] = b;
+                    }
+                }
+            }
+
+            continue;
+        }
 
         if (_stricmp(section, "Keys") == 0)
         {
@@ -261,6 +315,20 @@ int port_settings_save(const PortSettings *s, const char *path)
     for (i = 0; i < BIND_COUNT; i++)
     {
         fprintf(f, "%s=%s\n", port_bind_names[i], s->keys[i]);
+    }
+
+    fprintf(f, "\n[Alternate Keys]\n");
+
+    for (i = 0; i < BIND_COUNT; i++)
+    {
+        fprintf(f, "%s=%s\n", port_bind_names[i], s->keys2[i]);
+    }
+
+    fprintf(f, "\n[Mouse]\n");
+
+    for (i = 0; i < MOUSE_COUNT; i++)
+    {
+        fprintf(f, "%s=%s\n", port_mouse_action_names[i], port_mouse_button_names[s->mouse[i]]);
     }
 
     fclose(f);

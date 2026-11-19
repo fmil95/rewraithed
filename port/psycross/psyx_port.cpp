@@ -605,6 +605,62 @@ void PsyX_PortPgxpApply(GrVertex *vertex, short **pts, int count)
     }
 }
 
+/* --- input added to the keyboard's ---------------------------------------
+ * Set by port/src/pc_main.c from the settings: a second key for each pad
+ * button and the mouse button of each mouse action (SDL numbers, 0 none).
+ * In the menus (set each frame by port/src/input_hooks.c), Enter also
+ * selects, as Cross. Pad bits are active low, like the pad's. Called from
+ * PsyX_Pad_UpdateKeyboardInput. */
+int g_port_alt_keys[14];    /* SDL scancodes, in the order of BIND_* */
+int g_port_mouse[3];        /* attack, telekinesis, aim */
+int g_port_menu_enter = 1;    /* the game starts in the logos */
+
+static const u_short port_bind_bits[14] = {
+    0x10, 0x40, 0x80, 0x20,         /* up, down, left, right */
+    0x4000, 0x2000, 0x8000, 0x1000, /* cross, circle, square, triangle */
+    0x400, 0x100, 0x800, 0x200,     /* L1, L2, R1, R2 */
+    0x1, 0x8,                       /* select, start */
+};
+
+/* square (attack), triangle (telekinesis), L2 + R2 (aim) */
+static const u_short port_mouse_bits[3] = { 0x8000, 0x1000, 0x100 | 0x200 };
+
+u_short PsyX_PortExtraButtons(void)
+{
+    const Uint8 *keys = SDL_GetKeyboardState(NULL);
+    u_short ret = 0xFFFF;
+    int i;
+
+    for (i = 0; i < 14; i++)
+    {
+        if ((g_port_alt_keys[i] > 0) && keys[g_port_alt_keys[i]])
+        {
+            ret &= ~port_bind_bits[i];
+        }
+    }
+
+    if (g_port_menu_enter && (keys[SDL_SCANCODE_RETURN] || keys[SDL_SCANCODE_KP_ENTER]))
+    {
+        ret &= ~0x4000;     /* Cross */
+    }
+
+    /* the mouse, while the game window has the focus */
+    if ((g_window != NULL) && (SDL_GetMouseFocus() == g_window))
+    {
+        Uint32 buttons = SDL_GetMouseState(NULL, NULL);
+
+        for (i = 0; i < 3; i++)
+        {
+            if ((g_port_mouse[i] > 0) && (buttons & SDL_BUTTON(g_port_mouse[i])))
+            {
+                ret &= ~port_mouse_bits[i];
+            }
+        }
+    }
+
+    return ret;
+}
+
 int PsyX_PortTextureFilter(void)
 {
     return (g_port_force_filter >= 0) ? g_port_force_filter : g_cfg_bilinearFiltering;

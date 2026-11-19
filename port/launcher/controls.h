@@ -1,6 +1,6 @@
 /*
- * The launcher's Controls window: shows the keyboard binding of each PSX
- * button and lets the user press a new key for it.
+ * The launcher's Keyboard and Mouse window: the key and alternate key of
+ * each action, and the mouse button of each mouse action.
  */
 #ifndef REWRAITHED_LAUNCHER_CONTROLS_H
 #define REWRAITHED_LAUNCHER_CONTROLS_H
@@ -10,7 +10,7 @@
 
 #include "settings.h"
 
-/* Modal; returns 1 and updates s->keys on OK, 0 on Cancel. */
+/* Modal; returns 1 and updates s->keys, keys2 and mouse on OK, 0 on Cancel. */
 int controls_dialog(HWND owner, PortSettings *s, HFONT font, int dpi);
 
 #endif

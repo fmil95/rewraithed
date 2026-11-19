@@ -395,3 +395,41 @@ psycross_fixup(gpu/PsyX_GPU.cpp
 psycross_fixup(render/PsyX_render.cpp
     FIND    "\"\tgl_Position = Projection * vec4(a_position.xy, 0.0, 1.0);\\n\""
     REPLACE "\"\tgl_Position = Projection * vec4(a_position.xy + a_extra.zw / 128.0, 0.0, 1.0);\\n\"")
+
+# Alternate keys, the mouse and the debug menu key (port/psycross), on top
+# of the keyboard.
+psycross_fixup(pad/PsyX_pad.cpp
+    FIND    "u_short PsyX_Pad_UpdateKeyboardInput()\n{"
+    REPLACE "extern \"C\" u_short PsyX_PortExtraButtons(void);\n\nu_short PsyX_Pad_UpdateKeyboardInput()\n{")
+
+psycross_fixup(pad/PsyX_pad.cpp
+    FIND    "\tif (g_sdlKeyboardState[mapping.kc_start])//START\n\t\tret &= ~0x8;\n\n\treturn ret;"
+    REPLACE "\tif (g_sdlKeyboardState[mapping.kc_start])//START\n\t\tret &= ~0x8;\n\n\tret &= PsyX_PortExtraButtons();\n\n\treturn ret;")
+
+# Keyboard shortcuts (port/src/input_hooks.c): Enter selects in the menus,
+# and Backspace opens the debug menu without pressing Square + Circle.
+game_fixup(Game/GAMEPAD.c
+    FIND    "void GAMEPAD_Process(GameTracker *gameTracker)\n{\n"
+    REPLACE "void port_input_frame(void);\n\nvoid GAMEPAD_Process(GameTracker *gameTracker)\n{\n    port_input_frame();\n\n")
+
+game_fixup(Game/GAMELOOP.c
+    FIND    "        if (((controlCommand[1] & 0x60) == 0x60) && (!(controlCommand[0] & 0xF)))"
+    REPLACE "        if ((((controlCommand[1] & 0x60) == 0x60) && (!(controlCommand[0] & 0xF))) || port_debug_key_pressed())")
+
+game_fixup(Game/GAMELOOP.c
+    FIND    "void GAMELOOP_ChangeMode()\n"
+    REPLACE "int port_debug_key_pressed(void);\n\nvoid GAMELOOP_ChangeMode()\n")
+
+# Mouse look (port/src/input_hooks.c): while aiming or looking around, the
+# mouse turns Raziel's view as the analog stick does.
+game_fixup(Game/RAZIEL/RAZIEL.c
+    FIND    "void RAZIEL_TurnHead(Instance *instance, short *rotx, short *rotz, GameTracker *gameTracker)\n{\n"
+    REPLACE "void port_mouse_look(short *rotx, short *rotz);\n\nvoid RAZIEL_TurnHead(Instance *instance, short *rotx, short *rotz, GameTracker *gameTracker)\n{\n")
+
+game_fixup(Game/RAZIEL/RAZIEL.c
+    FIND    "        *rotz -= gameTrackerX.controlData[0][3] / 6;\n"
+    REPLACE "        *rotz -= gameTrackerX.controlData[0][3] / 6;\n\n        port_mouse_look(rotx, rotz);\n")
+
+game_fixup(Game/RAZIEL/RAZIEL.c
+    FIND    "        *rotz -= gameTrackerX.controlData[0][3] / 3;\n"
+    REPLACE "        *rotz -= gameTrackerX.controlData[0][3] / 3;\n\n        port_mouse_look(rotx, rotz);\n")

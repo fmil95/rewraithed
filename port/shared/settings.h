@@ -21,6 +21,12 @@ enum
     BIND_COUNT
 };
 
+/* mouse actions, and the PSX buttons they press */
+enum { MOUSE_ATTACK, MOUSE_TELEKINESIS, MOUSE_AIM, MOUSE_COUNT };
+
+/* mouse buttons, as SDL numbers them; 0 none */
+enum { MOUSE_NONE, MOUSE_LEFT, MOUSE_MIDDLE, MOUSE_RIGHT, MOUSE_X1, MOUSE_X2, MOUSE_BUTTON_COUNT };
+
 typedef struct
 {
     /* display */
@@ -44,11 +50,18 @@ typedef struct
     int fpsLimit;           /* 0 = unlimited */
     int discordPresence;    /* Discord Rich Presence */
 
-    /* keyboard: SDL scancode names */
+    /* keyboard: SDL scancode names; each button has a second, alternate key
+     * ("" for none) */
     char keys[BIND_COUNT][24];
+    char keys2[BIND_COUNT][24];
+
+    /* mouse: MOUSE_* button for each MOUSE_* action */
+    int mouse[MOUSE_COUNT];
 } PortSettings;
 
 extern const char *const port_bind_names[BIND_COUNT];
+extern const char *const port_mouse_action_names[MOUSE_COUNT];
+extern const char *const port_mouse_button_names[MOUSE_BUTTON_COUNT];
 
 /* the game's settings (port/src/pc_main.c) */
 extern PortSettings port_settings;

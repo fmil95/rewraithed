@@ -35,6 +35,8 @@ extern void PsyX_PortSetBorderless(void);
 extern int g_cfg_swapInterval;
 extern int g_cfg_bilinearFiltering;
 extern int g_port_pgxp;     /* port/psycross: PGXP */
+extern int g_port_alt_keys[BIND_COUNT];     /* port/psycross: input */
+extern int g_port_mouse[MOUSE_COUNT];
 extern PsyXKeyboardMapping g_cfg_keyboardMapping;
 
 /* rewraithed.ini, as edited by the launcher */
@@ -189,6 +191,13 @@ static void port_apply_keys(void)
         {
             *slots[i] = code;
         }
+
+        g_port_alt_keys[i] = (port_settings.keys2[i][0] != '\0') ? (int)SDL_GetScancodeFromName(port_settings.keys2[i]) : 0;
+    }
+
+    for (i = 0; i < MOUSE_COUNT; i++)
+    {
+        g_port_mouse[i] = port_settings.mouse[i];
     }
 }
 

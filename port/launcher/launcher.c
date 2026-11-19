@@ -220,7 +220,7 @@ static void build_ui(HWND hwnd)
         L"Loads the areas next to the one you are in right away, instead of in the background while you play.");
     y += 36;
     yes_no_row(hwnd, L"Enable Debug Menu", 336, y, 120, 460, ID_DEBUG_YES,
-        L"Opens the game's debug menu. In game, press Square and Circle at the same time (S and X on the keyboard by default).");
+        L"Opens the game's debug menu. In game, press Backspace, or Attack and Feed at the same time.");
     y += 36;
     yes_no_row(hwnd, L"Enable Logging", 336, y, 120, 460, ID_LOG_YES,
         L"Writes what the game does to rewraithed.log next to the game, including the details of a crash. "
@@ -236,8 +236,8 @@ static void build_ui(HWND hwnd)
     /* last row of the box, just above the buttons */
     y = 344;
     lbl = label(hwnd, L"Controls", 336, y, 120);
-    control(hwnd, L"BUTTON", L"Keyboard", BS_PUSHBUTTON | WS_TABSTOP, 460, y, 168, 26, ID_CONTROLS);
-    option_tip(hwnd, lbl, ID_CONTROLS, 0, L"Change the keys for each PlayStation button.");
+    control(hwnd, L"BUTTON", L"Keyboard and Mouse", BS_PUSHBUTTON | WS_TABSTOP, 460, y, 168, 26, ID_CONTROLS);
+    option_tip(hwnd, lbl, ID_CONTROLS, 0, L"Change the keys for each action, with an alternate key for each (the arrow keys also move), and the mouse buttons for attacking, telekinesis and aiming.");
 
     /* --- bottom --- */
     combo_row(hwnd, L"Area", 24, 395, 40, 68, 244, ID_AREA,
