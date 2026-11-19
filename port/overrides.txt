@@ -21,6 +21,10 @@ Game/SAVEINFO.c             SAVE_Init
 # Movies: -skiplogos leaves out the boot logo movies (port/src/main_hooks.c).
 Game/CINEMA/CINEPSX.c       CINE_Play
 
+# Test abilities from the command line: -swim, -abilities <mask>
+# (port/src/raziel_hooks.c).
+Game/RAZIEL/RAZIEL.c        mdRazielProcess
+
 # Read-queue service: the emulated CD drive delivers sectors from here.
 # Bigfile lookups: files in the "mods" folder replace BIGFILE.DAT entries
 # (port/src/mod_files.c).

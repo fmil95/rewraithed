@@ -32,7 +32,8 @@ void CheckForDevStation(void)
  *                  (see CINE_Play below)
  *   -debugmenu     unlock the debug menu (Square + Circle in game)
  *   -material      start in the material realm instead of the spectral one
- *   -skipcutscene  skip the start area's in-engine cutscene (e.g. under1's) */
+ *   -skipcutscene  skip the start area's in-engine cutscene (e.g. under1's)
+ *   -swim, -abilities <mask>: see port/src/raziel_hooks.c */
 void ProcessArgs(char *baseAreaName, GameTracker *gameTracker)
 {
     const char *area;
