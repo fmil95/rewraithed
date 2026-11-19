@@ -147,6 +147,30 @@ static void read_raw_sector(int lba)
 
     _fseeki64(cd_image, (long long)lba * RAW_SECTOR_SIZE, SEEK_SET);
     fread(cd_sector, 1, RAW_SECTOR_SIZE, cd_image);
+
+    /* the bigfile's directory table gains entries for units from the mods folder */
+    port_mod_patch_sector(lba, cd_sector + 24);
+}
+
+/* The 2048 data bytes of a disc sector, read directly (for port/src/mod_files.c). */
+int port_cd_read_data(int lba, unsigned char *out)
+{
+    unsigned char raw[RAW_SECTOR_SIZE];
+
+    if ((cd_image == NULL) || (lba < 0) || (lba >= cd_image_sectors))
+    {
+        return 0;
+    }
+
+    _fseeki64(cd_image, (long long)lba * RAW_SECTOR_SIZE, SEEK_SET);
+
+    if (fread(raw, 1, RAW_SECTOR_SIZE, cd_image) != RAW_SECTOR_SIZE)
+    {
+        return 0;
+    }
+
+    memcpy(out, raw + 24, 2048);
+    return 1;
 }
 
 /* --- callbacks -------------------------------------------------------- */

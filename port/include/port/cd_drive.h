@@ -49,6 +49,8 @@ int port_cd_position(void);
  * virtual sectors behind it (port/src/mod_files.c) */
 int port_cd_image_sectors(void);
 const unsigned char *port_mod_sector(int lba);
+void port_mod_patch_sector(int lba, unsigned char *data);
+int port_cd_read_data(int lba, unsigned char *out);
 void port_movie_present(void);
 
 #endif

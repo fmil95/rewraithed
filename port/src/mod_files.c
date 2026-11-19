@@ -35,6 +35,7 @@ typedef struct ModFile
     int first_lba;          /* virtual sectors [first_lba, first_lba + sectors) */
     int sectors;
     int reported;
+    int is_dir;             /* a virtual bigfile directory, not a file */
     BigFileEntry entry;
 } ModFile;
 
@@ -42,6 +43,48 @@ static ModFile mod_files[MAX_MOD_FILES];
 static int mod_count;
 static int mod_next_lba;
 static long bigfile_base_lba;
+
+/* New units, from units.txt in the mods folder: lines "<new unit> = <unit>",
+ * the second being an existing unit whose bigfile directory the new one
+ * copies (its object and sound files). */
+#define MAX_NEW_UNITS 32
+static char new_unit_name[MAX_NEW_UNITS][16];
+static char new_unit_source[MAX_NEW_UNITS][16];
+static int new_unit_count;
+
+/* The bigfile's directory table, with entries for the new units added */
+static unsigned char *patched_header;
+static int patched_header_sectors;
+
+static void read_units_txt(const char *disk_path)
+{
+    FILE *f = fopen(disk_path, "r");
+    char line[256];
+
+    if (f == NULL)
+    {
+        return;
+    }
+
+    while (fgets(line, sizeof(line), f) != NULL)
+    {
+        char a[64], b[64];
+
+        if ((line[0] == '#') || (sscanf(line, " %63[^= \t] = %63s", a, b) != 2))
+        {
+            continue;
+        }
+
+        if (new_unit_count < MAX_NEW_UNITS)
+        {
+            snprintf(new_unit_name[new_unit_count], 16, "%s", a);
+            snprintf(new_unit_source[new_unit_count], 16, "%s", b);
+            new_unit_count++;
+        }
+    }
+
+    fclose(f);
+}
 
 static void add_mod_file(const char *game_path, const char *disk_path, void *ctx)
 {
@@ -52,6 +95,12 @@ static void add_mod_file(const char *game_path, const char *disk_path, void *ctx
     long i;
 
     (void)ctx;
+
+    if (_stricmp(game_path, "\\units.txt") == 0)
+    {
+        read_units_txt(disk_path);
+        return;
+    }
 
     if (mod_count >= MAX_MOD_FILES)
     {
@@ -109,6 +158,207 @@ static void add_mod_file(const char *game_path, const char *disk_path, void *ctx
     mod_count++;
 }
 
+/* `bytes` bytes of BIGFILE.DAT from byte `offset`, straight from the disc. */
+static int read_bigfile(long offset, unsigned char *out, long bytes)
+{
+    unsigned char sector[SECTOR_DATA];
+    long done = 0;
+
+    while (done < bytes)
+    {
+        long pos = offset + done;
+        long skip = pos % SECTOR_DATA;
+        long n = SECTOR_DATA - skip;
+
+        if (n > bytes - done)
+        {
+            n = bytes - done;
+        }
+
+        if (!port_cd_read_data(bigfile_base_lba + pos / SECTOR_DATA, sector))
+        {
+            return 0;
+        }
+
+        memcpy(out + done, sector + skip, n);
+        done += n;
+    }
+
+    return 1;
+}
+
+static long get32(const unsigned char *p)
+{
+    return (long)((unsigned long)p[0] | ((unsigned long)p[1] << 8) | ((unsigned long)p[2] << 16) |
+                  ((unsigned long)p[3] << 24));
+}
+
+static void put32(unsigned char *p, long v)
+{
+    p[0] = (unsigned char)v;
+    p[1] = (unsigned char)(v >> 8);
+    p[2] = (unsigned char)(v >> 16);
+    p[3] = (unsigned char)(v >> 24);
+}
+
+/* A new unit (in units.txt) needs a bigfile directory: LOAD_ChangeDirectoryByID
+ * stops the game with "Could not read directory hash" for an unknown unit.
+ * Each new unit gets a virtual directory listing the files of the unit it
+ * copies (still read from the disc, so their names needn't be known) plus
+ * every mods file, and the directory table (read once by LOAD_InitCdLoader)
+ * gets an entry for it. */
+static void build_unit_directories(void)
+{
+    unsigned char head[8];
+    long num_dirs, root_offset, i, k;
+
+    if (new_unit_count == 0 || !read_bigfile(0, head, 8))
+    {
+        return;
+    }
+
+    num_dirs = get32(head);
+
+    {
+        unsigned char first[12];
+
+        if (!read_bigfile(4, first, 8))
+        {
+            return;
+        }
+
+        root_offset = get32(first + 4);       /* subDirList[0].subDirOffset */
+    }
+
+    patched_header_sectors = (int)((root_offset + SECTOR_DATA - 1) / SECTOR_DATA);
+    patched_header = calloc((size_t)patched_header_sectors, SECTOR_DATA);
+
+    if ((patched_header == NULL) || !read_bigfile(0, patched_header, root_offset))
+    {
+        free(patched_header);
+        patched_header = NULL;
+        return;
+    }
+
+    for (k = 0; k < new_unit_count; k++)
+    {
+        short id = (short)LOAD_HashUnit(new_unit_name[k]);
+        short src = (short)LOAD_HashUnit(new_unit_source[k]);
+        long src_offset = -1, src_files = 0, n, total;
+        unsigned char *dir;
+        ModFile *m;
+
+        for (i = 0; i < num_dirs; i++)
+        {
+            const unsigned char *e = patched_header + 4 + i * 8;
+            short eid = (short)(e[0] | (e[1] << 8));
+
+            if (eid == id)
+            {
+                printf("[rewraithed] mods: unit %s already has a bigfile directory\n", new_unit_name[k]);
+                src_offset = -2;
+                break;
+            }
+
+            if (eid == src)
+            {
+                src_files = (short)(e[2] | (e[3] << 8));
+                src_offset = get32(e + 4);
+            }
+        }
+
+        if (src_offset == -2)
+        {
+            continue;
+        }
+
+        if (src_offset < 0)
+        {
+            fprintf(stderr, "[rewraithed] mods: units.txt: no bigfile directory for unit %s\n", new_unit_source[k]);
+            continue;
+        }
+
+        if ((4 + (num_dirs + 1) * 8 > root_offset) || (mod_count >= MAX_MOD_FILES))
+        {
+            fprintf(stderr, "[rewraithed] mods: no room for another directory (%s)\n", new_unit_name[k]);
+            break;
+        }
+
+        n = 0;
+        for (i = 0; i < mod_count; i++)
+        {
+            n += !mod_files[i].is_dir;
+        }
+
+        total = 4 + (src_files + n) * 16;
+        m = &mod_files[mod_count];
+        memset(m, 0, sizeof(*m));
+        m->sectors = (int)((total + SECTOR_DATA - 1) / SECTOR_DATA);
+        dir = calloc((size_t)m->sectors, SECTOR_DATA);
+
+        if ((dir == NULL) || !read_bigfile(src_offset, dir, 4 + src_files * 16))
+        {
+            free(dir);
+            continue;
+        }
+
+        /* the source directory's files, then the mods files */
+        put32(dir, src_files + n);
+        for (i = 0, n = 0; i < mod_count; i++)
+        {
+            unsigned char *e;
+
+            if (mod_files[i].is_dir)
+            {
+                continue;
+            }
+
+            e = dir + 4 + (src_files + n) * 16;
+            put32(e, mod_files[i].entry.fileHash);
+            put32(e + 4, mod_files[i].entry.fileLen);
+            put32(e + 8, mod_files[i].entry.filePos);
+            put32(e + 12, mod_files[i].entry.checkSumFull);
+            n++;
+        }
+
+        snprintf(m->path, sizeof(m->path), "(directory of %s)", new_unit_name[k]);
+        m->data = dir;
+        m->length = total;
+        m->is_dir = 1;
+        m->first_lba = mod_next_lba;
+        mod_next_lba += m->sectors;
+        mod_count++;
+
+        {
+            unsigned char *e = patched_header + 4 + num_dirs * 8;
+
+            e[0] = (unsigned char)id;
+            e[1] = (unsigned char)(id >> 8);
+            e[2] = (unsigned char)(src_files + n);
+            e[3] = (unsigned char)((src_files + n) >> 8);
+            put32(e + 4, (m->first_lba - bigfile_base_lba) * SECTOR_DATA);
+        }
+
+        num_dirs++;
+        put32(patched_header, num_dirs);
+
+        printf("[rewraithed] mods: new unit %s (directory of %s, %ld files)\n",
+            new_unit_name[k], new_unit_source[k], src_files + n);
+    }
+}
+
+/* For the CD drive: puts the patched directory table into the bigfile's first sectors. */
+void port_mod_patch_sector(int lba, unsigned char *data)
+{
+    if ((patched_header != NULL) && (lba >= bigfile_base_lba) && (lba < bigfile_base_lba + patched_header_sectors))
+    {
+        long part = lba - bigfile_base_lba;
+        long bytes = SECTOR_DATA;
+
+        memcpy(data, patched_header + part * SECTOR_DATA, bytes);
+    }
+}
+
 /* Finds BIGFILE.DAT the same way the loader does, then the mods. */
 void LOAD_InitCdLoader(char *bigFileName, char *voiceFileName)
 {
@@ -129,10 +379,14 @@ void LOAD_InitCdLoader(char *bigFileName, char *voiceFileName)
             mod_files[i].entry.filePos = (mod_files[i].first_lba - bigfile_base_lba) * SECTOR_DATA;
         }
 
+        build_unit_directories();
+
         if (mod_next_lba >= (100 * 60 * 75) - 150)
         {
             fprintf(stderr, "[rewraithed] mods: too much data for the CD address range\n");
             mod_count = 0;
+            free(patched_header);
+            patched_header = NULL;
         }
     }
 
@@ -145,7 +399,7 @@ BigFileEntry *LOAD_GetBigFileEntryByHash(long hash)
 
     for (i = 0; i < mod_count; i++)
     {
-        if (mod_files[i].entry.fileHash == hash)
+        if (!mod_files[i].is_dir && mod_files[i].entry.fileHash == hash)
         {
             if (!mod_files[i].reported)
             {
