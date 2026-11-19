@@ -43,6 +43,7 @@ void port_settings_defaults(PortSettings *s)
     s->vsync = 1;
     s->pillarbox = 1;
     s->filtering = 0;
+    s->pgxp = 0;
     s->antialiasing = 0;
 
     s->skipIntros = SKIP_NONE;
@@ -191,6 +192,7 @@ int port_settings_load(PortSettings *s, const char *path)
         else if (_stricmp(key, "VSync") == 0)           s->vsync = yes(value);
         else if (_stricmp(key, "Pillarboxing") == 0)    s->pillarbox = yes(value);
         else if (_stricmp(key, "Filtering") == 0)       s->filtering = _stricmp(value, "Off") != 0;
+        else if (_stricmp(key, "PGXP") == 0)            s->pgxp = yes(value);
         else if (_stricmp(key, "Antialiasing") == 0)    s->antialiasing = atoi(value);
         else if (_stricmp(key, "Area") == 0)            snprintf(s->area, sizeof(s->area), "%s", value);
         else if (_stricmp(key, "SkipIntros") == 0)
@@ -241,6 +243,7 @@ int port_settings_save(const PortSettings *s, const char *path)
     fprintf(f, "VSync=%s\n", s->vsync ? "Yes" : "No");
     fprintf(f, "Pillarboxing=%s\n", s->pillarbox ? "Yes" : "No");
     fprintf(f, "Filtering=%s\n", s->filtering ? "Bilinear" : "Off");
+    fprintf(f, "PGXP=%s\n", s->pgxp ? "Yes" : "No");
     fprintf(f, "Antialiasing=%d\n", s->antialiasing);
 
     fprintf(f, "\n[Game]\n");

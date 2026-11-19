@@ -31,6 +31,7 @@ typedef struct
     int vsync;
     int pillarbox;          /* keep 4:3 with bars */
     int filtering;          /* textures: 0 off, 1 bilinear */
+    int pgxp;               /* PGXP: sub-pixel vertex precision */
     int antialiasing;       /* MSAA samples: 0, 2, 4, 8 */
 
     /* game */

@@ -367,3 +367,31 @@ psycross_fixup(render/PsyX_render.cpp
 game_fixup(Game/DEBUG.c
     FIND    "DebugMenuLine debugSoundMenu[0];"
     REPLACE "DebugMenuLine debugSoundMenu[1];")
+
+# PGXP (launcher setting): the GTE keeps the sub-pixel screen position of
+# each vertex it projects, keyed by the integer position it writes, and
+# polygons drawn with those positions get them back (port/psycross).
+psycross_fixup(gte/PsyX_GTE.cpp
+    FIND    "\tC2_SY2 = Lm_G2(F((long long)C2_OFY + ((long long)C2_IR2 * h_over_sz3)) >> 16);\n"
+    REPLACE "\tC2_SY2 = Lm_G2(F((long long)C2_OFY + ((long long)C2_IR2 * h_over_sz3)) >> 16);\n\n\tif (g_port_pgxp)\n\t{\n\t\tconst double unit = m_sf ? 4096.0 : 1.0;\n\t\tdouble ir1 = (double)(((long long)C2_TRX << 12) + (long long)C2_R11 * VX(idx) + (long long)C2_R12 * VY(idx) + (long long)C2_R13 * VZ(idx)) / unit;\n\t\tdouble ir2 = (double)(((long long)C2_TRY << 12) + (long long)C2_R21 * VX(idx) + (long long)C2_R22 * VY(idx) + (long long)C2_R23 * VZ(idx)) / unit;\n\n\t\tPsyX_PortPgxpStore((unsigned int)C2_SXY2, ((double)C2_OFX + ir1 * h_over_sz3) / 65536.0, ((double)C2_OFY + ir2 * h_over_sz3) / 65536.0);\n\t}\n")
+
+psycross_fixup(gte/PsyX_GTE.cpp
+    FIND    "int GTE_RotTransPers(int idx, int lm)\n"
+    REPLACE "extern \"C\" int g_port_pgxp;\nextern \"C\" void PsyX_PortPgxpStore(unsigned int sxy, double x, double y);\n\nint GTE_RotTransPers(int idx, int lm)\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "\tApplyVertexPGXP(&vertex[0], p0, ofsX, ofsY, gteidx, -2);\n"
+    REPLACE "\t{\n\t\tVERTTYPE* pts[3] = { p0, p1, p2 };\n\n\t\tPsyX_PortPgxpApply(vertex, pts, 3);\n\t}\n\n\tApplyVertexPGXP(&vertex[0], p0, ofsX, ofsY, gteidx, -2);\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "\tApplyVertexPGXP(&vertex[0], p0, ofsX, ofsY, gteidx, -3);\n"
+    REPLACE "\t{\n\t\tVERTTYPE* pts[4] = { p0, p1, p2, p3 };\n\n\t\tPsyX_PortPgxpApply(vertex, pts, 4);\n\t}\n\n\tApplyVertexPGXP(&vertex[0], p0, ofsX, ofsY, gteidx, -3);\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "void MakeVertexTriangle(GrVertex* vertex, VERTTYPE* p0, VERTTYPE* p1, VERTTYPE* p2, ushort gteidx)\n"
+    REPLACE "extern \"C\" void PsyX_PortPgxpApply(GrVertex* vertex, VERTTYPE** pts, int count);\n\nvoid MakeVertexTriangle(GrVertex* vertex, VERTTYPE* p0, VERTTYPE* p1, VERTTYPE* p2, ushort gteidx)\n")
+
+# the fraction (in 1/128 pixel) is in the vertex's two spare bytes, a_extra.zw
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "\"\tgl_Position = Projection * vec4(a_position.xy, 0.0, 1.0);\\n\""
+    REPLACE "\"\tgl_Position = Projection * vec4(a_position.xy + a_extra.zw / 128.0, 0.0, 1.0);\\n\"")

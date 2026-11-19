@@ -34,6 +34,7 @@ extern void PsyX_PortSetBorderless(void);
 /* PsyCross */
 extern int g_cfg_swapInterval;
 extern int g_cfg_bilinearFiltering;
+extern int g_port_pgxp;     /* port/psycross: PGXP */
 extern PsyXKeyboardMapping g_cfg_keyboardMapping;
 
 /* rewraithed.ini, as edited by the launcher */
@@ -279,6 +280,7 @@ int main(int argc, char **argv)
      * compiles its shaders */
     g_cfg_swapInterval = port_settings.vsync;
     g_cfg_bilinearFiltering = port_settings.filtering;
+    g_port_pgxp = port_settings.pgxp;
     g_cfg_dithering = port_settings.dithering;
     g_cfg_pillarbox = port_settings.pillarbox;
 

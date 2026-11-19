@@ -11,6 +11,7 @@
  *    follow the "Scaling" setting, 3D follows "Filtering").
  */
 #include <stdlib.h>
+#include <math.h>
 
 #include <SDL.h>
 
@@ -21,6 +22,7 @@
 #include "PsyX/common/glad.h"
 #include "PsyX/PsyX_globals.h"
 #include "PsyX/PsyX_public.h"
+#include "PsyX/PsyX_render.h"
 
 extern SDL_Window *g_window;   /* PsyX_render.cpp */
 extern "C" DISPENV activeDispEnv;   /* PsyX_GPU.cpp */
@@ -399,6 +401,29 @@ void PsyX_PortStoreShownFrame(int x, int y, int w, int h)
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFbo);
 }
 
+/* --- PGXP -------------------------------------------------------------------
+ * The GTE rounds each projected vertex down to whole PSX pixels, which makes
+ * geometry wobble and snap, more visibly the higher the resolution. With
+ * PGXP on, the GTE (fixup in PsyX_GTE.cpp) also stores the exact position,
+ * keyed by the integer screen X/Y it wrote. A polygon whose vertices carry
+ * those X/Y gets the exact positions back when it is drawn (fixups in
+ * PsyX_GPU.cpp): the whole pixels in x/y, the fraction in 1/128 pixel in the
+ * vertex's two spare bytes, added in the vertex shader. A key that another
+ * vertex shares is off by under a pixel at worst, and a polygon needs two
+ * vertices found, so 2D polygons that happen to sit on a projected vertex
+ * stay as they are. */
+int g_port_pgxp;    /* set by port/src/pc_main.c from the PGXP setting */
+
+typedef struct
+{
+    unsigned int key;
+    unsigned int frame;
+    float x, y;
+} PortPgxpEntry;
+
+static PortPgxpEntry pgxp_cache[1 << 16];
+static unsigned int pgxp_frame = 1;
+
 void PsyX_PortBeforeSwap(void)
 {
     static GLuint fbo;
@@ -418,6 +443,8 @@ void PsyX_PortBeforeSwap(void)
         g_port_keep_frame = 0;
         keep_shown_frame();
     }
+
+    pgxp_frame++;
 
     if (!screenshotPending)
     {
@@ -502,6 +529,79 @@ void PsyX_PortSetDitherScale(int onScreen)
     if (loc >= 0)
     {
         glUniform1f(loc, scale);
+    }
+}
+
+static unsigned int pgxp_slot(unsigned int key)
+{
+    return (key * 2654435761u) >> 16;
+}
+
+void PsyX_PortPgxpStore(unsigned int sxy, double x, double y)
+{
+    PortPgxpEntry *e;
+    short sx = (short)(sxy & 0xFFFF);
+    short sy = (short)(sxy >> 16);
+
+    /* clamped by the GTE: the integer position is not the exact one */
+    if ((x < sx - 0.5) || (x >= sx + 2.0) || (y < sy - 0.5) || (y >= sy + 2.0))
+    {
+        return;
+    }
+
+    e = &pgxp_cache[pgxp_slot(sxy)];
+    e->key = sxy;
+    e->frame = pgxp_frame;
+    e->x = (float)x;
+    e->y = (float)y;
+}
+
+void PsyX_PortPgxpApply(GrVertex *vertex, short **pts, int count)
+{
+    const PortPgxpEntry *found[4];
+    int hits = 0;
+    int i;
+
+    if (!g_port_pgxp)
+    {
+        return;
+    }
+
+    for (i = 0; i < count; i++)
+    {
+        unsigned int key = (unsigned short)pts[i][0] | ((unsigned int)(unsigned short)pts[i][1] << 16);
+        const PortPgxpEntry *e = &pgxp_cache[pgxp_slot(key)];
+
+        /* stored this frame or the one before (drawn a frame later) */
+        found[i] = ((e->key == key) && (pgxp_frame - e->frame <= 1)) ? e : NULL;
+        hits += (found[i] != NULL);
+    }
+
+
+    if (hits < 2)
+    {
+        return;
+    }
+
+    for (i = 0; i < count; i++)
+    {
+        float dx, dy;
+        int ix, iy;
+
+        if (found[i] == NULL)
+        {
+            continue;
+        }
+
+        dx = found[i]->x - pts[i][0];
+        dy = found[i]->y - pts[i][1];
+        ix = (int)floorf(dx);
+        iy = (int)floorf(dy);
+
+        vertex[i].x += ix;
+        vertex[i].y += iy;
+        vertex[i]._p0 = (char)((dx - ix) * 127.0f);
+        vertex[i]._p1 = (char)((dy - iy) * 127.0f);
     }
 }
 
