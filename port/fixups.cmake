@@ -39,6 +39,14 @@ game_fixup(Game/MEMPACK.c
 # FPS limit (launcher setting): other than at the PSX's 30, the measured
 # frame time may go under 33 ms, a plane shift keeps the measured time
 # too, and the two-vblank display wait gives way to port_frame_limit().
+# During gameplay frameRate24fps is set and 9 ms are taken off every frame
+# time, so that at 30 FPS frames of up to 42 ms (24 FPS) still count as
+# 33 ms. At 60 FPS that took 9 of every 16.7 ms and the game ran at under
+# half speed; the 9 ms only apply at 30 FPS.
+game_fixup(Game/GAMELOOP.c
+    FIND    "            if ((gameTrackerX.frameRateLock == 1) && (gameTrackerX.frameRate24fps != 0))"
+    REPLACE "            if ((gameTrackerX.frameRateLock == 1) && (gameTrackerX.frameRate24fps != 0) && port_fps_locked())")
+
 game_fixup(Game/GAMELOOP.c
     FIND    "            if ((last < (unsigned int)lockRate) || (gameTrackerX.gameData.asmData.MorphTime != 1000))"
     REPLACE "            if ((last < port_min_frame_ms(lockRate)) || ((gameTrackerX.gameData.asmData.MorphTime != 1000) && port_fps_locked()))")
