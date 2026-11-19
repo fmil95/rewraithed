@@ -180,6 +180,19 @@ game_fixup(Game/STREAM.c
     FIND    "    MEMPACK_Free((char *)object);\n\n    dumpee->object = NULL;\n}\n"
     REPLACE "    MEMPACK_Free((char *)object);\n\n    dumpee->object = NULL;\n\n    dumpee->objectStatus = OBJECTTRACKER_UNUSED;\n}\n")
 
+# Dangling pointer: Raziel.Senses.Portal (the warp gate Raziel stands near)
+# outlived its instance when the level was left (debug-menu warp to aluka6),
+# and the next frame set an animation on the freed portal through its freed
+# object. On PSX the stale read is harmless; the pointer is now forgotten
+# when the instance is removed.
+game_fixup(Game/RAZIEL/RAZIEL.c
+    FIND    "static Player Raziel;\n"
+    REPLACE "static Player Raziel;\n\nvoid RAZIEL_ForgetInstance(Instance *instance)\n{\n    if (Raziel.Senses.Portal == instance)\n    {\n        Raziel.Senses.Portal = NULL;\n    }\n}\n")
+
+game_fixup(Game/INSTANCE.c
+    FIND    "    EVENT_RemoveInstanceFromInstanceList(instance);\n"
+    REPLACE "    EVENT_RemoveInstanceFromInstanceList(instance);\n\n    {\n        extern void RAZIEL_ForgetInstance(Instance *instance);\n\n        RAZIEL_ForgetInstance(instance);\n    }\n")
+
 # NULL read: a playing periodic sound whose channel number is out of range
 # gets no channel from SndGetSfxChannel, and unlike the other callers this
 # one read its handle without checking (Sunlight Glyph room). On PSX that
