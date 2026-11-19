@@ -20,7 +20,7 @@
 enum
 {
     ID_DISPLAY = 100, ID_RESOLUTION, ID_SCALING, ID_RENDERER,
-    ID_VSYNC_YES, ID_VSYNC_NO, ID_PILLAR_YES, ID_PILLAR_NO,
+    ID_VSYNC_YES, ID_VSYNC_NO, ID_PILLAR_YES, ID_PILLAR_NO, ID_PGXP_YES, ID_PGXP_NO,
     ID_FILTERING, ID_AA, ID_AREA,
     ID_SKIP, ID_DITHER, ID_PRELOAD_YES, ID_PRELOAD_NO, ID_DEBUG_YES, ID_DEBUG_NO,
     ID_LOG_YES, ID_LOG_NO, ID_DISCORD_YES, ID_DISCORD_NO, ID_FPS, ID_CONTROLS,
@@ -29,19 +29,21 @@ enum
 
 typedef struct { int w, h; } Resolution;
 
-/* 4:3, 16:9, 16:10 and 5:4 sizes from 320x240 up to 1920x1080 */
+/* common 4:3, 16:9, 16:10 and 5:4 sizes, largest first */
 static const Resolution resolutions[] = {
-    { 320, 240 }, { 400, 300 }, { 480, 360 }, { 512, 384 }, { 640, 360 }, { 640, 400 }, { 640, 480 },
-    { 720, 480 }, { 800, 450 }, { 800, 480 }, { 800, 500 }, { 800, 600 }, { 854, 480 }, { 960, 540 },
-    { 960, 720 }, { 1024, 576 }, { 1024, 600 }, { 1024, 640 }, { 1024, 768 }, { 1152, 648 }, { 1152, 720 },
-    { 1152, 864 }, { 1280, 720 }, { 1280, 768 }, { 1280, 800 }, { 1280, 960 }, { 1280, 1024 }, { 1360, 768 },
-    { 1366, 768 }, { 1400, 1050 }, { 1440, 900 }, { 1440, 1080 }, { 1600, 900 }, { 1680, 1050 }, { 1920, 1080 },
+    { 1920, 1080 }, { 1680, 1050 }, { 1600, 1024 }, { 1600, 900 }, { 1440, 1080 }, { 1440, 900 },
+    { 1366, 768 }, { 1360, 768 }, { 1280, 1024 }, { 1280, 960 }, { 1280, 800 }, { 1280, 768 },
+    { 1280, 720 }, { 1176, 664 }, { 1152, 864 }, { 1024, 768 }, { 960, 720 }, { 800, 600 },
+    { 720, 576 }, { 720, 480 }, { 640, 480 }, { 320, 240 },
 };
+
+/* the Display list, in its order */
+static const int display_order[] = { DISPLAY_FULLSCREEN, DISPLAY_WINDOWED, DISPLAY_BORDERLESS };
 
 #define COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
 
 static const int aa_values[] = { 0, 2, 4, 8 };
-static const int fps_values[] = { 0, 30, 60, 120, 240 };
+static const int fps_values[] = { 30, 60 };
 
 static PortSettings settings;
 static char ini_path[MAX_PATH];
@@ -61,9 +63,9 @@ static HWND control(HWND parent, const wchar_t *cls, const wchar_t *text, DWORD 
     return c;
 }
 
-static void label(HWND parent, const wchar_t *text, int x, int y, int w)
+static HWND label(HWND parent, const wchar_t *text, int x, int y, int w)
 {
-    control(parent, L"STATIC", text, SS_CENTERIMAGE, x, y, w, 24, 0);
+    return control(parent, L"STATIC", text, SS_CENTERIMAGE | SS_NOTIFY, x, y, w, 24, 0);
 }
 
 static HWND combo(HWND parent, int x, int y, int w, int id)
@@ -127,95 +129,132 @@ static void tooltip(HWND parent, HWND target, const wchar_t *text)
     SendMessageW(tip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
 }
 
+/* the same tooltip on an option's label and its control(s) (0: none) */
+static void option_tip(HWND parent, HWND lbl, int id1, int id2, const wchar_t *text)
+{
+    tooltip(parent, lbl, text);
+
+    if (id1 != 0)
+    {
+        tooltip(parent, GetDlgItem(parent, id1), text);
+    }
+
+    if (id2 != 0)
+    {
+        tooltip(parent, GetDlgItem(parent, id2), text);
+    }
+}
+
+/* a label and a list, or a label and a Yes/No pair, on one row with a tooltip */
+static void combo_row(HWND parent, const wchar_t *text, int x, int y, int lw, int cx, int cw, int id, const wchar_t *tip)
+{
+    HWND lbl = label(parent, text, x, y, lw);
+
+    combo(parent, cx, y, cw, id);
+    option_tip(parent, lbl, id, 0, tip);
+}
+
+static void yes_no_row(HWND parent, const wchar_t *text, int x, int y, int lw, int cx, int idYes, const wchar_t *tip)
+{
+    HWND lbl = label(parent, text, x, y, lw);
+
+    yes_no(parent, cx, y, idYes);
+    option_tip(parent, lbl, idYes, idYes + 1, tip);
+}
+
 static void build_ui(HWND hwnd)
 {
-    static const wchar_t debug_tip[] =
-        L"Opens the game's debug menu. In game, press Square and Circle at the same time (S and X on the keyboard by default).";
-    static const wchar_t discord_tip[] =
-        L"Shows on your Discord profile that you are playing Rewraithed, with the area you are in and the realm. "
-        L"Needs the Discord app running on this PC.";
-    HWND debug_label;
-    HWND discord_label;
+    HWND lbl;
     int y;
     int i;
 
-    /* --- left: video --- */
-    control(hwnd, L"BUTTON", L"Video", BS_GROUPBOX, 12, 8, 300, 362, 0);
+    /* top right: the version */
+    control(hwnd, L"STATIC", L"Version " REWRAITHED_VERSION, SS_RIGHT | WS_DISABLED, 440, 4, 200, 16, 0);
 
-    y = 32;
-    label(hwnd, L"Display", 24, y, 96);
-    combo(hwnd, 124, y, 176, ID_DISPLAY);
+    /* --- left: video --- */
+    control(hwnd, L"BUTTON", L"Video", BS_GROUPBOX, 12, 18, 300, 362, 0);
+
+    y = 42;
+    combo_row(hwnd, L"Display", 24, y, 96, 124, 176, ID_DISPLAY,
+        L"Fullscreen takes over the screen at the chosen resolution. Windowed opens a window of that size. "
+        L"Borderless covers the screen with a window, which is quicker to switch away from.");
     y += 36;
-    label(hwnd, L"Resolution", 24, y, 96);
-    combo(hwnd, 124, y, 176, ID_RESOLUTION);
+    combo_row(hwnd, L"Resolution", 24, y, 96, 124, 176, ID_RESOLUTION,
+        L"The size the game is drawn at, in pixels: the screen mode in fullscreen, or the size of the window.");
     y += 36;
-    label(hwnd, L"Scaling", 24, y, 96);
-    combo(hwnd, 124, y, 176, ID_SCALING);
+    combo_row(hwnd, L"Scaling", 24, y, 96, 124, 176, ID_SCALING,
+        L"How movies and 2D screens are enlarged to the window. Nearest keeps their pixels sharp, Bilinear smooths them.");
     y += 36;
-    label(hwnd, L"Renderer", 24, y, 96);
-    combo(hwnd, 124, y, 176, ID_RENDERER);
+    combo_row(hwnd, L"Renderer", 24, y, 96, 124, 176, ID_RENDERER,
+        L"The graphics API the game draws with. OpenGL 3.3 is the only one for now.");
     y += 36;
-    label(hwnd, L"VSync", 24, y, 96);
-    yes_no(hwnd, 124, y, ID_VSYNC_YES);
+    yes_no_row(hwnd, L"VSync", 24, y, 96, 124, ID_VSYNC_YES,
+        L"Waits for the monitor to finish each refresh before showing a new frame, which stops tearing.");
     y += 36;
-    label(hwnd, L"Pillarboxing", 24, y, 96);
-    yes_no(hwnd, 124, y, ID_PILLAR_YES);
+    yes_no_row(hwnd, L"Pillarboxing", 24, y, 96, 124, ID_PILLAR_YES,
+        L"Keeps the game's original 4:3 shape on wide screens, with black bars at the sides. "
+        L"With No, the picture is stretched to fill the window.");
     y += 36;
-    label(hwnd, L"Filtering", 24, y, 96);
-    combo(hwnd, 124, y, 176, ID_FILTERING);
+    combo_row(hwnd, L"Filtering", 24, y, 96, 124, 176, ID_FILTERING,
+        L"How 3D textures are drawn. Off keeps the sharp pixels of the PlayStation, Bilinear smooths them.");
     y += 36;
-    label(hwnd, L"Antialiasing", 24, y, 96);
-    combo(hwnd, 124, y, 176, ID_AA);
+    yes_no_row(hwnd, L"Use PGXP", 24, y, 96, 124, ID_PGXP_YES,
+        L"Places 3D geometry with sub-pixel precision instead of snapping it to whole PlayStation pixels, "
+        L"which reduces the wobbling of polygons as they move.");
     y += 36;
-    label(hwnd, L"Area", 24, y, 96);
-    combo(hwnd, 124, y, 176, ID_AREA);
+    combo_row(hwnd, L"Antialiasing", 24, y, 96, 124, 176, ID_AA,
+        L"Smooths the jagged edges of polygons. Higher values look smoother but need a faster graphics card.");
 
     /* --- right: game --- */
-    control(hwnd, L"BUTTON", L"Game", BS_GROUPBOX, 324, 8, 316, 362, 0);
+    control(hwnd, L"BUTTON", L"Game", BS_GROUPBOX, 324, 18, 316, 362, 0);
 
-    y = 32;
-    label(hwnd, L"Skip Intros", 336, y, 120);
-    combo(hwnd, 460, y, 168, ID_SKIP);
+    y = 42;
+    combo_row(hwnd, L"Skip Intros", 336, y, 120, 460, 168, ID_SKIP,
+        L"Skip to Menu leaves out the logos and goes to the main menu. "
+        L"Skip to Game also leaves out the menu and starts the game right away.");
     y += 36;
-    label(hwnd, L"Dithering", 336, y, 120);
-    combo(hwnd, 460, y, 168, ID_DITHER);
+    combo_row(hwnd, L"Dithering", 336, y, 120, 460, 168, ID_DITHER,
+        L"The PlayStation's dot pattern that hides color banding. Off gives smoother colors, On looks like the original.");
     y += 36;
-    label(hwnd, L"Preload Chunks", 336, y, 120);
-    yes_no(hwnd, 460, y, ID_PRELOAD_YES);
+    yes_no_row(hwnd, L"Preload Areas", 336, y, 120, 460, ID_PRELOAD_YES,
+        L"Loads the areas next to the one you are in right away, instead of in the background while you play.");
     y += 36;
-    debug_label = control(hwnd, L"STATIC", L"Enable Debug Menu", SS_CENTERIMAGE | SS_NOTIFY, 336, y, 120, 24, 0);
-    yes_no(hwnd, 460, y, ID_DEBUG_YES);
-    tooltip(hwnd, debug_label, debug_tip);
-    tooltip(hwnd, GetDlgItem(hwnd, ID_DEBUG_YES), debug_tip);
-    tooltip(hwnd, GetDlgItem(hwnd, ID_DEBUG_NO), debug_tip);
+    yes_no_row(hwnd, L"Enable Debug Menu", 336, y, 120, 460, ID_DEBUG_YES,
+        L"Opens the game's debug menu. In game, press Square and Circle at the same time (S and X on the keyboard by default).");
     y += 36;
-    label(hwnd, L"Enable Logging", 336, y, 120);
-    yes_no(hwnd, 460, y, ID_LOG_YES);
+    yes_no_row(hwnd, L"Enable Logging", 336, y, 120, 460, ID_LOG_YES,
+        L"Writes what the game does to rewraithed.log next to the game, including the details of a crash. "
+        L"Useful when reporting problems.");
     y += 36;
-    discord_label = control(hwnd, L"STATIC", L"Discord Rich Presence", SS_CENTERIMAGE | SS_NOTIFY, 336, y, 120, 24, 0);
-    yes_no(hwnd, 460, y, ID_DISCORD_YES);
-    tooltip(hwnd, discord_label, discord_tip);
-    tooltip(hwnd, GetDlgItem(hwnd, ID_DISCORD_YES), discord_tip);
-    tooltip(hwnd, GetDlgItem(hwnd, ID_DISCORD_NO), discord_tip);
+    yes_no_row(hwnd, L"Discord Rich Presence", 336, y, 120, 460, ID_DISCORD_YES,
+        L"Shows on your Discord profile that you are playing Rewraithed, with the area you are in and the realm. "
+        L"Needs the Discord app running on this PC.");
     y += 36;
-    label(hwnd, L"FPS Limit", 336, y, 120);
-    combo(hwnd, 460, y, 168, ID_FPS);
-    y += 36;
-    label(hwnd, L"Controls", 336, y, 120);
-    control(hwnd, L"BUTTON", L"Keyboard...", BS_PUSHBUTTON | WS_TABSTOP, 460, y, 168, 26, ID_CONTROLS);
+    combo_row(hwnd, L"FPS Limit", 336, y, 120, 460, 168, ID_FPS,
+        L"How many frames a second the game runs at. 30 is the original rate of the game, 60 is smoother.");
+
+    /* last row of the box, just above the buttons */
+    y = 344;
+    lbl = label(hwnd, L"Controls", 336, y, 120);
+    control(hwnd, L"BUTTON", L"Keyboard", BS_PUSHBUTTON | WS_TABSTOP, 460, y, 168, 26, ID_CONTROLS);
+    option_tip(hwnd, lbl, ID_CONTROLS, 0, L"Change the keys for each PlayStation button.");
 
     /* --- bottom --- */
-    control(hwnd, L"STATIC", L"Version " REWRAITHED_VERSION, SS_CENTERIMAGE | WS_DISABLED, 14, 385, 200, 24, 0);
-    control(hwnd, L"BUTTON", L"Play", BS_DEFPUSHBUTTON | WS_TABSTOP, 372, 382, 84, 30, ID_PLAY);
-    control(hwnd, L"BUTTON", L"Save", BS_PUSHBUTTON | WS_TABSTOP, 464, 382, 84, 30, ID_SAVE);
-    control(hwnd, L"BUTTON", L"Exit", BS_PUSHBUTTON | WS_TABSTOP, 556, 382, 84, 30, ID_EXIT);
+    combo_row(hwnd, L"Area", 24, 395, 40, 68, 244, ID_AREA,
+        L"Starts the game straight in the chosen area. Default starts where the disc does.");
+    control(hwnd, L"BUTTON", L"Play", BS_DEFPUSHBUTTON | WS_TABSTOP, 372, 392, 84, 30, ID_PLAY);
+    control(hwnd, L"BUTTON", L"Save", BS_PUSHBUTTON | WS_TABSTOP, 464, 392, 84, 30, ID_SAVE);
+    control(hwnd, L"BUTTON", L"Exit", BS_PUSHBUTTON | WS_TABSTOP, 556, 392, 84, 30, ID_EXIT);
 
     /* --- lists --- */
-    combo_add(ID_DISPLAY, L"Windowed");
-    combo_add(ID_DISPLAY, L"Fullscreen");
-    combo_add(ID_DISPLAY, L"Borderless");
+    for (i = 0; i < COUNT(display_order); i++)
+    {
+        static const wchar_t *const names[] = { L"Windowed", L"Fullscreen", L"Borderless" };
 
-    for (i = COUNT(resolutions) - 1; i >= 0; i--)
+        combo_add(ID_DISPLAY, names[display_order[i]]);
+    }
+
+    for (i = 0; i < COUNT(resolutions); i++)
     {
         wchar_t text[32];
 
@@ -250,14 +289,11 @@ static void build_ui(HWND hwnd)
     combo_add(ID_SKIP, L"Skip to Menu");
     combo_add(ID_SKIP, L"Skip to Game");
 
-    combo_add(ID_DITHER, L"On");
     combo_add(ID_DITHER, L"Off");
+    combo_add(ID_DITHER, L"On");
 
-    combo_add(ID_FPS, L"0 (unlimited)");
     combo_add(ID_FPS, L"30");
     combo_add(ID_FPS, L"60");
-    combo_add(ID_FPS, L"120");
-    combo_add(ID_FPS, L"240");
 }
 
 static void show_settings(void)
@@ -265,7 +301,14 @@ static void show_settings(void)
     int i;
     int sel;
 
-    combo_set(ID_DISPLAY, settings.display);
+    for (i = 0; i < COUNT(display_order); i++)
+    {
+        if (display_order[i] == settings.display)
+        {
+            combo_set(ID_DISPLAY, i);
+        }
+    }
+
 
     sel = -1;
 
@@ -273,7 +316,7 @@ static void show_settings(void)
     {
         if ((resolutions[i].w == settings.width) && (resolutions[i].h == settings.height))
         {
-            sel = COUNT(resolutions) - 1 - i;
+            sel = i;
         }
     }
 
@@ -292,6 +335,7 @@ static void show_settings(void)
     yes_no_set(ID_VSYNC_YES, settings.vsync);
     yes_no_set(ID_PILLAR_YES, settings.pillarbox);
     combo_set(ID_FILTERING, settings.filtering ? 1 : 0);
+    yes_no_set(ID_PGXP_YES, settings.pgxp);
 
     for (i = 0; i < COUNT(aa_values); i++)
     {
@@ -314,21 +358,14 @@ static void show_settings(void)
 
     combo_set(ID_AREA, sel);
     combo_set(ID_SKIP, settings.skipIntros);
-    combo_set(ID_DITHER, settings.dithering ? 0 : 1);
+    combo_set(ID_DITHER, settings.dithering ? 1 : 0);
     yes_no_set(ID_PRELOAD_YES, settings.preloadChunks);
     yes_no_set(ID_DEBUG_YES, settings.debugMenu);
     yes_no_set(ID_LOG_YES, settings.logging);
     yes_no_set(ID_DISCORD_YES, settings.discordPresence);
 
-    sel = 1;
-
-    for (i = 0; i < COUNT(fps_values); i++)
-    {
-        if (fps_values[i] == settings.fpsLimit)
-        {
-            sel = i;
-        }
-    }
+    /* 30 or 60: higher limits and unlimited, from older versions, run at 60 */
+    sel = ((settings.fpsLimit > 30) || (settings.fpsLimit <= 0)) ? 1 : 0;
 
     combo_set(ID_FPS, sel);
 }
@@ -338,7 +375,7 @@ static void read_settings(void)
     int sel;
     wchar_t text[32];
 
-    settings.display = combo_get(ID_DISPLAY);
+    settings.display = display_order[combo_get(ID_DISPLAY)];
 
     sel = combo_get(ID_RESOLUTION);
     SendDlgItemMessageW(main_window, ID_RESOLUTION, CB_GETLBTEXT, sel, (LPARAM)text);
@@ -348,13 +385,14 @@ static void read_settings(void)
     settings.vsync = yes_no_get(ID_VSYNC_YES);
     settings.pillarbox = yes_no_get(ID_PILLAR_YES);
     settings.filtering = combo_get(ID_FILTERING) == 1;
+    settings.pgxp = yes_no_get(ID_PGXP_YES);
     settings.antialiasing = aa_values[combo_get(ID_AA)];
 
     sel = combo_get(ID_AREA);
     snprintf(settings.area, sizeof(settings.area), "%s", (sel > 0) ? launcher_areas[sel - 1].unit : "");
 
     settings.skipIntros = combo_get(ID_SKIP);
-    settings.dithering = combo_get(ID_DITHER) == 0;
+    settings.dithering = combo_get(ID_DITHER) == 1;
     settings.preloadChunks = yes_no_get(ID_PRELOAD_YES);
     settings.debugMenu = yes_no_get(ID_DEBUG_YES);
     settings.logging = yes_no_get(ID_LOG_YES);
@@ -427,6 +465,7 @@ static LRESULT CALLBACK main_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         {
         case ID_VSYNC_YES: case ID_VSYNC_NO:
         case ID_PILLAR_YES: case ID_PILLAR_NO:
+        case ID_PGXP_YES: case ID_PGXP_NO:
         case ID_PRELOAD_YES: case ID_PRELOAD_NO:
         case ID_DEBUG_YES: case ID_DEBUG_NO:
         case ID_LOG_YES: case ID_LOG_NO:
@@ -508,7 +547,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR cmd, int show)
     r.left = 0;
     r.top = 0;
     r.right = S(652);
-    r.bottom = S(424);
+    r.bottom = S(434);
     AdjustWindowRect(&r, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE);
 
     main_window = CreateWindowW(L"RewraithedLauncher", L"Rewraithed Launcher",
