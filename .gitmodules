@@ -4,3 +4,6 @@
 [submodule "third_party/PsyCross"]
 	path = third_party/PsyCross
 	url = https://github.com/OpenDriver2/PsyCross.git
+[submodule "editor"]
+	path = editor
+	url = https://github.com/fmil95/rewraithed-editor.git
