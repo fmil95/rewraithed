@@ -30,6 +30,10 @@ Game/RAZIEL/RAZIEL.c        mdRazielProcess
 # (port/src/mod_files.c).
 Game/LOAD3D.c               LOAD_ProcessReadQueue LOAD_InitCdLoader LOAD_GetBigFileEntryByHash
 
+# -vramlog: log object texture placement in video memory
+# (port/src/vram_hooks.c).
+Game/VRAM.c                 VRAM_GetObjectVramSpace VRAM_RearrangeVramsLayer VRAM_ClearVramBlock
+
 # Overlay modules: C tables instead of relocated MIPS (port/src/relmod.c).
 Game/RELMOD.c
 Game/STREAM.c               STREAM_LoadObjectReturn
