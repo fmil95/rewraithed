@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.24)
 
 project(rewraithed LANGUAGES C CXX)
 
+# Shown by the launcher; bump with each release (v0.99c is Beta 3).
+set(REWRAITHED_VERSION "0.99c")
+
 # The decompiled game stores pointers in 32-bit fields and links GPU primitives
 # through 24-bit addresses, so the port is 32-bit only for now.
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)

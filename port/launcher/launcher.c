@@ -104,8 +104,34 @@ static int yes_no_get(int idYes)
     return IsDlgButtonChecked(main_window, idYes) == BST_CHECKED;
 }
 
+/* a hover tooltip for one control */
+static void tooltip(HWND parent, HWND target, const wchar_t *text)
+{
+    static HWND tip;
+    TOOLINFOW ti;
+
+    if (tip == NULL)
+    {
+        tip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, NULL, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+            CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, parent, NULL, GetModuleHandleW(NULL), NULL);
+        SendMessageW(tip, TTM_SETMAXTIPWIDTH, 0, S(300));
+        SendMessageW(tip, TTM_SETDELAYTIME, TTDT_AUTOPOP, 30000);
+    }
+
+    memset(&ti, 0, sizeof(ti));
+    ti.cbSize = sizeof(ti);
+    ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+    ti.hwnd = parent;
+    ti.uId = (UINT_PTR)target;
+    ti.lpszText = (wchar_t *)text;
+    SendMessageW(tip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
+}
+
 static void build_ui(HWND hwnd)
 {
+    static const wchar_t debug_tip[] =
+        L"Opens the game's debug menu. In game, press Square and Circle at the same time (S and X on the keyboard by default).";
+    HWND debug_label;
     int y;
     int i;
 
@@ -153,12 +179,12 @@ static void build_ui(HWND hwnd)
     label(hwnd, L"Preload Chunks", 336, y, 120);
     yes_no(hwnd, 460, y, ID_PRELOAD_YES);
     y += 36;
-    label(hwnd, L"Enable Debug Menu", 336, y, 120);
+    debug_label = control(hwnd, L"STATIC", L"Enable Debug Menu", SS_CENTERIMAGE | SS_NOTIFY, 336, y, 120, 24, 0);
     yes_no(hwnd, 460, y, ID_DEBUG_YES);
-    y += 26;
-    control(hwnd, L"STATIC", L"In game, press Square and Circle at the same time (S and X on the keyboard by default).",
-        0, 336, y, 292, 32, 0);
-    y += 40;
+    tooltip(hwnd, debug_label, debug_tip);
+    tooltip(hwnd, GetDlgItem(hwnd, ID_DEBUG_YES), debug_tip);
+    tooltip(hwnd, GetDlgItem(hwnd, ID_DEBUG_NO), debug_tip);
+    y += 36;
     label(hwnd, L"Enable Logging", 336, y, 120);
     yes_no(hwnd, 460, y, ID_LOG_YES);
     y += 36;
@@ -169,6 +195,7 @@ static void build_ui(HWND hwnd)
     control(hwnd, L"BUTTON", L"Keyboard...", BS_PUSHBUTTON | WS_TABSTOP, 460, y, 168, 26, ID_CONTROLS);
 
     /* --- bottom --- */
+    control(hwnd, L"STATIC", L"Version " REWRAITHED_VERSION, SS_CENTERIMAGE | WS_DISABLED, 14, 385, 200, 24, 0);
     control(hwnd, L"BUTTON", L"Play", BS_DEFPUSHBUTTON | WS_TABSTOP, 372, 382, 84, 30, ID_PLAY);
     control(hwnd, L"BUTTON", L"Save", BS_PUSHBUTTON | WS_TABSTOP, 464, 382, 84, 30, ID_SAVE);
     control(hwnd, L"BUTTON", L"Exit", BS_PUSHBUTTON | WS_TABSTOP, 556, 382, 84, 30, ID_EXIT);

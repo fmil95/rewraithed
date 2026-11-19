@@ -12,7 +12,8 @@ add_executable(rewraithed-launcher WIN32
 )
 
 target_include_directories(rewraithed-launcher PRIVATE "${PORT_DIR}/shared" "${PORT_DIR}/launcher")
-target_compile_definitions(rewraithed-launcher PRIVATE _CRT_SECURE_NO_WARNINGS UNICODE _UNICODE)
+target_compile_definitions(rewraithed-launcher PRIVATE _CRT_SECURE_NO_WARNINGS UNICODE _UNICODE
+    REWRAITHED_VERSION=L"${REWRAITHED_VERSION}")
 target_link_libraries(rewraithed-launcher PRIVATE comctl32)
 
 # the game and the launcher go together
