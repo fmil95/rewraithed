@@ -12,7 +12,9 @@
 Game/PSX/PSX_G2/MAINVM.c    main
 
 # Probes dev-kit RAM at 0x80180000/0x80380000; a PC is a retail unit.
-Game/PSX/MAIN.c             CheckForDevStation ProcessArgs
+# ProcessArgs: PC command line (port/src/main_hooks.c); show_screen: the
+# legal screen is skipped with the logos.
+Game/PSX/MAIN.c             CheckForDevStation ProcessArgs show_screen
 
 # Save system: the memory card stays available with -skipmenu
 # (port/src/main_hooks.c).
@@ -44,3 +46,6 @@ Game/PSX/SUPPORT.c          printf sprintf vsprintf atoi strcmpi
 
 # DEBUG.c has its own isdigit(); keep it private to that file.
 Game/DEBUG.c                isdigit
+
+# -skipcutscene: in-engine cutscenes are fast-forwarded (port/src/cutscene_hooks.c).
+Game/GAMELOOP.c             GAMELOOP_Process GAMELOOP_DisplayFrame

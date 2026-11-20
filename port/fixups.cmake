@@ -468,3 +468,215 @@ psycross_fixup(gpu/PsyX_GPU.cpp
 psycross_fixup(render/PsyX_render.cpp
     FIND    "\t\"\t\tvec2 tc = v_texcoord.xy * texelSize + texelSize * 0.5;\\n\"\\\n\t\"\t\tvec4 color = texture2D(s_texture, tc);\\n\"\\\n"
     REPLACE "\t\"\t\tvec2 tc = v_texcoord.xy * texelSize + texelSize * 0.5;\\n\"\\\n\t\"\t\tvec4 color = texture2D(s_texture, tc);\\n\"\\\n\t\"\t\tif (color.a < 0.5) discard;\\n\"\\\n")
+# Font glyphs are never filtered. They are POLY_FT4s cut from the font page
+# and drawn among the 3D polygons, so with Filtering set to Bilinear they
+# were filtered too, and the filter reads texels past each glyph's edge
+# (neighbouring glyphs, the cell borders): seams around every letter.
+# drawChar2DPoly marks them with bit 14 of the texture page (unused by the
+# GPU), and PsyCross gives them a draw batch of their own, unfiltered.
+game_fixup(Game/FONT.c
+    FIND    "    textPoly->tpage = fontTracker.font_tpage;\n"
+    REPLACE "    textPoly->tpage = fontTracker.font_tpage | 0x4000;\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "\tconst char*\t\tdebugText;\n};\n"
+    REPLACE "\tconst char*\t\tdebugText;\n\n\tint\t\t\t\tportFilter;\t// -1: the setting; 0: unfiltered (font glyphs)\n};\n\nextern \"C\" int g_port_force_filter;\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "\tint tpage = activeDrawEnv.tpage;\n\tGPUDrawSplit& curSplit = g_splits[g_splitIndex];\n"
+    REPLACE "\tint tpage = activeDrawEnv.tpage;\n\tGPUDrawSplit& curSplit = g_splits[g_splitIndex];\n\tconst int portFilter = (textured && (tpage & 0x4000)) ? 0 : -1;\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "\t\tcurSplit.debugText == currentSplitDebugText)\n"
+    REPLACE "\t\tcurSplit.debugText == currentSplitDebugText &&\n\t\tcurSplit.portFilter == portFilter)\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "\tsplit.debugText = currentSplitDebugText;\n"
+    REPLACE "\tsplit.debugText = currentSplitDebugText;\n\tsplit.portFilter = portFilter;\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "\tGR_SetTexture(split.textureId, split.texFormat);\n"
+    REPLACE "\t{\n\t\tconst int forced = g_port_force_filter;\n\n\t\tif (split.portFilter >= 0)\n\t\t{\n\t\t\tg_port_force_filter = split.portFilter;\n\t\t}\n\n\t\tGR_SetTexture(split.textureId, split.texFormat);\n\t\tg_port_force_filter = forced;\n\t}\n")
+
+# the marker is not part of the texture page the texels are read from
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "void MakeTexcoordTriangle(GrVertex* vertex, unsigned char* uv0, unsigned char* uv1, unsigned char* uv2, short page, short clut, unsigned char dither)\n{\n"
+    REPLACE "void MakeTexcoordTriangle(GrVertex* vertex, unsigned char* uv0, unsigned char* uv1, unsigned char* uv2, short page, short clut, unsigned char dither)\n{\n\tpage &= ~0x4000;\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "void MakeTexcoordQuad(GrVertex* vertex, unsigned char* uv0, unsigned char* uv1, unsigned char* uv2, unsigned char* uv3, short page, short clut, unsigned char dither)\n{\n"
+    REPLACE "void MakeTexcoordQuad(GrVertex* vertex, unsigned char* uv0, unsigned char* uv1, unsigned char* uv2, unsigned char* uv3, short page, short clut, unsigned char dither)\n{\n\tpage &= ~0x4000;\n")
+
+# Antialiasing: a pixel only partly covered by a polygon got its texture
+# coordinate at the pixel's centre, outside the polygon, so the texture was
+# read past its edge (lines and dots between font glyphs). Centroid
+# interpolation takes it inside the covered part.
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "\tvarying vec4 v_texcoord;\n"
+    REPLACE "\tcentroid varying vec4 v_texcoord;\n")
+
+# -uncut: possession (port/src/uncut_possession.c). The possessed monster's
+# commands go to MON_PossessedMessageHandler, as in the February prototype's
+# MON_IdleMessageHandler; the pad becomes those commands once it is read.
+game_fixup(Game/MONSTER/MONMSG.c
+    FIND    "    id = message->ID;\n\n    mv = (MonsterVars *)instance->extraData;\n\n    switch (id)\n    {\n    case 0x1000002:\n"
+    REPLACE "    id = message->ID;\n\n    mv = (MonsterVars *)instance->extraData;\n\n    {\n        extern int port_uncut_monster_message(Instance *instance, Message *message);\n\n        if (port_uncut_monster_message(instance, message))\n        {\n            return;\n        }\n    }\n\n    switch (id)\n    {\n    case 0x1000002:\n")
+
+game_fixup(Game/GAMEPAD.c
+    FIND    "    GAMEPAD_Commands((long(*)[5])gameTracker->controlCommand, (long(*)[5])gameTracker->controlData, 1);\n}\n"
+    REPLACE "    GAMEPAD_Commands((long(*)[5])gameTracker->controlCommand, (long(*)[5])gameTracker->controlData, 1);\n\n    {\n        extern void port_uncut_frame(GameTracker *gameTracker);\n\n        port_uncut_frame(gameTracker);\n    }\n}\n")
+
+# NULL read: a monster attacking with no target (a controlled one, as with
+# -uncut possession) marked that target at the end of the swing.
+game_fixup(Game/MONSTER/MONSTER.c
+    FIND    "        MON_TurnOffWeaponSpheres(instance);\n        enemy->mirConditions |= 0x200;\n"
+    REPLACE "        MON_TurnOffWeaponSpheres(instance);\n\n        if (enemy != NULL)\n        {\n            enemy->mirConditions |= 0x200;\n        }\n")
+
+# -uncut: a possessed monster's attack goes where it faces; the attack state
+# would turn it to its enemy (Raziel, standing by).
+game_fixup(Game/MONSTER/MONSTER.c
+    FIND    "    if (enemy != NULL && (MON_GetTime(instance) < (unsigned int)mv->generalTimer || !(INSTANCE_Query(enemy->instance, 0xA) & 0x02000000)))\n"
+    REPLACE "    if (enemy != NULL && !port_uncut_is_possessed(instance) && (MON_GetTime(instance) < (unsigned int)mv->generalTimer || !(INSTANCE_Query(enemy->instance, 0xA) & 0x02000000)))\n")
+
+game_fixup(Game/MONSTER/MONSTER.c
+    FIND    "void MON_AttackEntry(Instance *instance)\n"
+    REPLACE "int port_uncut_is_possessed(Instance *instance);\n\nvoid MON_AttackEntry(Instance *instance)\n")
+
+# -uncut: a possessed monster's projectile flies where it faces; the
+# projectile state would only fire at its enemy (Raziel) and turn to him.
+game_fixup(Game/MONSTER/MONSTER.c
+    FIND    "    missileDef = &ma->missileList[(signed char)mv->subAttr->combatAttributes->missileAttack];\n\n    if (mv->enemy == NULL)\n"
+    REPLACE "    missileDef = &ma->missileList[(signed char)mv->subAttr->combatAttributes->missileAttack];\n\n    if ((mv->enemy == NULL) && !port_uncut_is_possessed(instance))\n")
+
+game_fixup(Game/MONSTER/MONSTER.c
+    FIND    "            MISSILE_FireAtInstance(instance, missileDef, mv->enemy->instance);\n"
+    REPLACE "            if (port_uncut_is_possessed(instance))\n            {\n                extern void port_uncut_fire_missile(Instance *instance, MonsterMissile *missileDef);\n\n                port_uncut_fire_missile(instance, missileDef);\n            }\n            else\n            {\n                MISSILE_FireAtInstance(instance, missileDef, mv->enemy->instance);\n            }\n")
+
+game_fixup(Game/MONSTER/MONSTER.c
+    FIND    "        MON_TurnToPosition(instance, &mv->enemy->instance->position, mv->subAttr->speedPivotTurn);\n    }\n\n    MON_DefaultQueueHandler(instance);\n}\n"
+    REPLACE "        if (!port_uncut_is_possessed(instance))\n        {\n            MON_TurnToPosition(instance, &mv->enemy->instance->position, mv->subAttr->speedPivotTurn);\n        }\n    }\n\n    MON_DefaultQueueHandler(instance);\n}\n")
+
+# -uncut: a cutscene puppets Raziel (0x4000E); possession ends before it.
+game_fixup(Game/RAZIEL/RAZIEL.c
+    FIND    "            Raziel.returnState = StateHandlerPuppetShow;\n"
+    REPLACE "            {\n                extern void port_uncut_cutscene(int on);\n\n                port_uncut_cutscene(1);\n            }\n\n            Raziel.returnState = StateHandlerPuppetShow;\n")
+
+game_fixup(Game/RAZIEL/RAZIEL.c
+    FIND    "            Instance *heldWeapon;\n\n            Raziel.Senses.Flags &= ~0x10;\n\n            ControlFlag &= ~0x20000;\n"
+    REPLACE "            Instance *heldWeapon;\n\n            {\n                extern void port_uncut_cutscene(int on);\n\n                port_uncut_cutscene(0);\n            }\n\n            Raziel.Senses.Flags &= ~0x10;\n\n            ControlFlag &= ~0x20000;\n")
+
+# -uncut: the Spirit Glyph (port/src/uncut_spirit.c), glyph 8 of an eight
+# glyph menu: the menu's size and turn, the glyph's bit, cost and message.
+game_fixup(Game/GLYPH.c
+    FIND    "static short fx_going = 0;\n"
+    REPLACE "static short fx_going = 0;\n\nint port_uncut_glyphs(void);\nint port_uncut_glyph_step(void);\nlong port_uncut_spirit_ability(void);\nint port_uncut_spirit_cost(void);\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "    abilities = INSTANCE_Query(gameTrackerX.playerInstance, queryRazielAbilities) | debugRazielFlags3;\n\n    return (1 << (glyph + 17)) & abilities;\n"
+    REPLACE "    if (glyph == 8)\n    {\n        return port_uncut_spirit_ability();\n    }\n\n    abilities = INSTANCE_Query(gameTrackerX.playerInstance, queryRazielAbilities) | debugRazielFlags3;\n\n    return (1 << (glyph + 17)) & abilities;\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "    return (unsigned char)glyphtunedata->glyph_costs[glyphNum - 1];\n"
+    REPLACE "    if (glyphNum == 8)\n    {\n        return port_uncut_spirit_cost();\n    }\n\n    return (unsigned char)glyphtunedata->glyph_costs[glyphNum - 1];\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "    for (n = 0; n < 7; rot -= 585, n++)\n"
+    REPLACE "    for (n = 0; n < port_uncut_glyphs(); rot -= port_uncut_glyph_step(), n++)\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "        if (_GlyphIsGlyphSet(n + 1) != 0)\n        {\n            num = n;\n"
+    REPLACE "        if (_GlyphIsGlyphSet(n + 1) != 0)\n        {\n            num = (n == 7) ? 8 : n;\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "data->target_glyph_rotation = 3510;"
+    REPLACE "data->target_glyph_rotation = 6 * port_uncut_glyph_step();")
+
+game_fixup(Game/GLYPH.c
+    FIND    "(data->selectedGlyph - 1) * 585;"
+    REPLACE "(data->selectedGlyph - 1) * port_uncut_glyph_step();")
+
+game_fixup(Game/GLYPH.c
+    FIND    "                    if (--data->selectedGlyph <= 0)\n                    {\n                        data->selectedGlyph = 7;\n"
+    REPLACE "                    if (--data->selectedGlyph <= 0)\n                    {\n                        data->selectedGlyph = port_uncut_glyphs();\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "                    if (data->selectedGlyph >= 8)\n"
+    REPLACE "                    if (data->selectedGlyph > port_uncut_glyphs())\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "    case 7:\n        message = 0x80007;\n        break;\n    }\n"
+    REPLACE "    case 7:\n        message = 0x80007;\n        break;\n    case 8:\n        message = 0x80008;\n        break;\n    }\n")
+
+# The Spirit Glyph's ring (April's Glyph_DoSpell): green, from 10752 away,
+# closing in on Raziel; it ends once it reaches him. Monsters and humans it
+# crosses on its way in get 0x80008.
+game_fixup(Game/GLYPH.c
+    FIND    "    case 7:\n        return;\n    }\n"
+    REPLACE "    case 7:\n        return;\n    case 8:\n        whatAmIMask = 0xA;\n        Message     = 0x80008;\n        break;\n    }\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "            if (((dist <= radius) && (radius_old < old_dist)) && ("
+    REPLACE "            if ((((glyphnum == 8) ? ((dist >= radius) && (old_dist < radius_old)) : ((dist <= radius) && (radius_old < old_dist)))) && (")
+
+game_fixup(Game/GLYPH.c
+    FIND    "    case 7:\n        break;\n    }\n\n    if (fx_going != 0)\n    {\n"
+    REPLACE "    case 7:\n        break;\n    case 8:\n        blast_range = 10752;\n\n        fx_blastring = FX_DoBlastRing(NULL, (SVector *)&instance->position, &mat, -1, 10752, 0, 7168, 80, 160, -1048576, 12288, 0, 512, 1024, 0xFF00, 0, 0, -99, 0);\n\n        if (fx_blastring != NULL)\n        {\n            fx_going = 8;\n        }\n\n        break;\n    }\n\n    if ((fx_going != 0) && (glyphnum != 8))\n    {\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "        if (fx_blastring->radius > blast_range)\n"
+    REPLACE "        if ((fx_going == 8) ? ((fx_blastring->radius < 0) || (fx_blastring->vel >= 0)) : (fx_blastring->radius > blast_range))\n")
+
+# Its icon: the sheet's eighth cell, in April's Spirit Glyph colours.
+game_fixup(Game/FX.c
+    FIND    "    if (glyphObject == NULL)\n    {\n        return;\n    }\n\n    if (glyphnum == 7)\n"
+    REPLACE "    if (glyphObject == NULL)\n    {\n        return;\n    }\n\n    if (glyphnum == 8)\n    {\n        texture = FX_GetTextureObject(glyphObject, 0, 7);\n    }\n    else if (glyphnum == 7)\n")
+
+game_fixup(Game/FX.c
+    FIND    "    glyphnum *= 4;\n\n    color_array = glyphtunedata->color_array;\n"
+    REPLACE "    if (glyphnum == 8)\n    {\n        static long spirit_colors[4] = {0x2D852F, 0x2D852F, 0x3FE917, 0x3FE917};\n\n        glyphnum = 0;\n\n        color_array = spirit_colors;\n    }\n    else\n    {\n        glyphnum *= 4;\n\n        color_array = glyphtunedata->color_array;\n    }\n")
+
+# Raziel casts it (with the Sound Glyph's motions, without its sound),
+# outside water and the spectral realm only, as the other glyphs.
+game_fixup(Game/RAZIEL/RAZIEL.c
+    FIND    "        case 0x80002:\n            if (CurrentSection == 0)\n            {\n                razPrepGlyph();\n\n                razSwitchStringAnimation(In->CharacterInstance, 2);\n"
+    REPLACE "        case 0x80008:\n            if (CurrentSection == 0)\n            {\n                razPrepGlyph();\n\n                razSwitchStringAnimation(In->CharacterInstance, 4);\n            }\n\n            In->SectionList[CurrentSection].Data1 = 0;\n            break;\n        case 0x80002:\n            if (CurrentSection == 0)\n            {\n                razPrepGlyph();\n\n                razSwitchStringAnimation(In->CharacterInstance, 2);\n")
+
+game_fixup(Game/RAZIEL/RAZIEL.c
+    FIND    "        ability = Raziel.Abilities & 0x1FC0000;\n"
+    REPLACE "        {\n            extern long port_uncut_spirit_ability(void);\n\n            ability = (Raziel.Abilities & 0x1FC0000) | port_uncut_spirit_ability();\n        }\n")
+
+# The ring kills the monsters and humans it reaches.
+game_fixup(Game/MONSTER/MONMSG.c
+    FIND    "    case 0x80002:\n        if (instance->petrifyValue == 0)\n"
+    REPLACE "    case 0x80008:\n    {\n        extern void port_uncut_spirit_hit(Instance *instance);\n\n        port_uncut_spirit_hit(instance);\n        break;\n    }\n    case 0x80002:\n        if (instance->petrifyValue == 0)\n")
+
+# -uncut: the debug menu's Cut Content page (port/src/uncut_content.c). A
+# spare line after the main debug menu's end; with -uncut it becomes the
+# menu's last line.
+game_fixup(Game/DEBUG.c
+    FIND    "    {DEBUG_LINE_TYPE_BIT, 0, 0, \"MUSIC ON\", &gameTrackerX.debugFlags2, 0x1000},\n    {DEBUG_LINE_TYPE_ENDLIST, 0, 0, \"\", &gameTrackerX.debugFlags, 0},\n};\n"
+    REPLACE "    {DEBUG_LINE_TYPE_BIT, 0, 0, \"MUSIC ON\", &gameTrackerX.debugFlags2, 0x1000},\n    {DEBUG_LINE_TYPE_ENDLIST, 0, 0, \"\", &gameTrackerX.debugFlags, 0},\n    {DEBUG_LINE_TYPE_ENDLIST, 0, 0, \"Cut Content...\", (long *)port_cutContentMenu, 0},\n};\n")
+
+game_fixup(Game/DEBUG.c
+    FIND    "DebugMenuLine standardMenu[] = {\n"
+    REPLACE "extern DebugMenuLine port_cutContentMenu[];\n\nDebugMenuLine standardMenu[] = {\n")
+
+# -uncut: April's reavers of an element hit with it: Sunlight 0x40, Water
+# 0x10, Stone 0x400, Spirit 0x800, Sound 0x200 (July: only Spectral,
+# Material and Fire), and their colours replace July's placeholders.
+game_fixup(Game/REAVER.c
+    FIND    "                case 6:\n                    type = 32;\n                    break;\n                }\n"
+    REPLACE "                case 6:\n                    type = 32;\n                    break;\n                case 3:\n                    type = 0x40;\n                    break;\n                case 4:\n                    type = 0x10;\n                    break;\n                case 5:\n                    type = 0x400;\n                    break;\n                case 7:\n                    type = 0x800;\n                    break;\n                case 8:\n                    type = 0x200;\n                    break;\n                }\n")
+
+game_fixup(Game/REAVER.c
+    FIND    "        case 6:\n            level = STREAM_GetLevelWithID(instance->currentStreamUnitID);\n"
+    REPLACE "        case 3:\n            reavType = 0x40;\n            break;\n        case 4:\n            reavType = 0x10;\n            break;\n        case 5:\n            reavType = 0x400;\n            break;\n        case 7:\n            reavType = 0x800;\n            break;\n        case 8:\n            reavType = 0x200;\n            break;\n        case 6:\n            level = STREAM_GetLevelWithID(instance->currentStreamUnitID);\n")
+
+game_fixup(Game/REAVER.c
+    FIND    "    FX_ReaverBladeInit();\n}\n"
+    REPLACE "    {\n        extern void port_uncut_reaver_colors(Instance *reaver);\n\n        port_uncut_reaver_colors(instance);\n    }\n\n    FX_ReaverBladeInit();\n}\n")
+
+# ... and April's monsters react to the element (MON_DefaultMessageHandler).
+game_fixup(Game/MONSTER/MONMSG.c
+    FIND    "        damage = 0;\n\n        switch (mv->damageType)\n        {\n        case 0x20:\n"
+    REPLACE "        damage = 0;\n\n        extern int port_uncut_reaver_hit(Instance *instance, evMonsterHitData *data, int *fatal, int *damage);\n\n        switch (port_uncut_reaver_hit(instance, data, &fatal, &damage) ? -1 : mv->damageType)\n        {\n        case -1:\n            break;\n        case 0x20:\n")

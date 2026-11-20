@@ -9,6 +9,7 @@
 
 extern int devstation;
 extern long DoMainMenu;
+extern InterfaceItem InterfaceItems[6];
 
 /* port/src/pc_main.c: value after a command-line option, or NULL */
 const char *port_arg(const char *name);
@@ -17,6 +18,20 @@ int port_has_flag(const char *name);
 void ProcessArgs_psx(char *baseAreaName, GameTracker *gameTracker);
 void SAVE_Init_psx(GameTracker *gt);
 void CINE_Play_psx(char *strfile, unsigned short mask, int buffers);
+void show_screen_psx(char *name);
+
+/* -skiplogos, or the launcher's Skip intros (to the menu or to the game) */
+static int port_skip_logos(void)
+{
+    return port_has_flag("-skiplogos") || (port_settings.skipIntros != SKIP_NONE);
+}
+
+/* the still screen after the logo movies (Blood Omen by Silicon Knights,
+ * Soul Reaver by Crystal Dynamics): MAIN.c's last InterfaceItem */
+static int port_is_legal_screen(const char *name)
+{
+    return SDL_strcasecmp(name, "\\kain2\\game\\psx\\mainmenu\\legal.tim") == 0;
+}
 
 /* The PSX version writes to the extra RAM of a DTL-H dev kit to detect it. */
 void CheckForDevStation(void)
@@ -28,11 +43,13 @@ void CheckForDevStation(void)
  * override the start area and skip the main menu:
  *   -area <name>   start in that area, e.g. city5 (default from the disc)
  *   -skipmenu      start the game right after the logos
- *   -skiplogos     leave out the publisher and developer logo movies
- *                  (see CINE_Play below)
+ *   -skiplogos     leave out the publisher and developer logo movies and
+ *                  the legal screen after them (see CINE_Play below)
  *   -debugmenu     unlock the debug menu (Square + Circle in game)
  *   -material      start in the material realm instead of the spectral one
- *   -skipcutscene  skip the start area's in-engine cutscene (e.g. under1's)
+ *   -skipcutscene  no cutscenes: under1's opening is left out (below), every
+ *                  other in-engine scene is fast-forwarded (cutscene_hooks.c)
+ *                  and the movies level scripts play are skipped (CINE_Play)
  *   -swim, -abilities <mask>: see port/src/raziel_hooks.c
  *   -vramlog       log object texture placement: see port/src/vram_hooks.c */
 void ProcessArgs(char *baseAreaName, GameTracker *gameTracker)
@@ -59,6 +76,21 @@ void ProcessArgs(char *baseAreaName, GameTracker *gameTracker)
         DoMainMenu = 0;
     }
 
+    /* the boot sequence holds the legal screen for its timeout (165 frames)
+     * whether or not show_screen below draws it */
+    if (port_skip_logos())
+    {
+        int i;
+
+        for (i = 0; i < 6; i++)
+        {
+            if (port_is_legal_screen(InterfaceItems[i].name))
+            {
+                InterfaceItems[i].timeout = 0;
+            }
+        }
+    }
+
     /* the disc's kain2.arg has -INSPECTRAL, so areas start in the spectral
      * realm, where most enemies are absent */
     if (port_has_flag("-material"))
@@ -66,9 +98,9 @@ void ProcessArgs(char *baseAreaName, GameTracker *gameTracker)
         gameTracker->gameData.asmData.MorphType = 0;
     }
 
-    /* The debug menu's "Skip First Puppet Show": level event scripts test
-     * this bit (ATTR_SKIP_PUPPET_SHOW in EVENT.c) and leave out their
-     * cutscene. Nothing clears it. */
+    /* The debug menu's "Skip First Puppet Show": under1's opening script tests
+     * this bit (ATTR_SKIP_PUPPET_SHOW in EVENT.c) and leaves its cutscene out.
+     * Nothing clears it. The other scenes don't test it: cutscene_hooks.c. */
     if (port_has_flag("-skipcutscene"))
     {
         gameTracker->streamFlags |= 0x800000;
@@ -97,14 +129,31 @@ void SAVE_Init(GameTracker *gt)
 }
 
 /* -skiplogos: the two logo movies the game plays at boot (MAIN.c's
- * InterfaceItems) end at once; every other movie plays. */
+ * InterfaceItems) end at once. -skipcutscene: so do the movies level scripts
+ * play (CINE_PlayIngame's \CHRONO<n>.STR). Every other movie plays. */
 void CINE_Play(char *strfile, unsigned short mask, int buffers)
 {
-    if ((port_has_flag("-skiplogos") || (port_settings.skipIntros != SKIP_NONE)) &&
+    if (port_skip_logos() &&
         ((SDL_strcasecmp(strfile, "\\PUBLOGO.STR;1") == 0) || (SDL_strcasecmp(strfile, "\\CRYLOGO.STR;1") == 0)))
     {
         return;
     }
 
+    if (port_has_flag("-skipcutscene") && (SDL_strncasecmp(strfile, "\\CHRONO", 7) == 0))
+    {
+        return;
+    }
+
     CINE_Play_psx(strfile, mask, buffers);
+}
+
+/* -skiplogos: and no legal screen either (show_screen draws only that one) */
+void show_screen(char *name)
+{
+    if (port_skip_logos() && port_is_legal_screen(name))
+    {
+        return;
+    }
+
+    show_screen_psx(name);
 }
