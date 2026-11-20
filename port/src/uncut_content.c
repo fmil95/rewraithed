@@ -28,8 +28,8 @@
  *
  * Picking a reaver gives Raziel the Soul Reaver ability if he lacks it (the
  * debug menu's Special Abilities, Soul Reaver), and the reaver imbued with
- * it; picking none takes it away again, or, when he had one of his own,
- * leaves him the plain Material/Spectral blade. The picked reaver is the
+ * it; picking none leaves him the ability and the plain Material/Spectral
+ * blade. The picked reaver is the
  * material realm's only: in the spectral realm Raziel has the plain
  * Spectral blade, and back in the material realm the picked reaver again.
  * The Fire Reaver still goes out under water, as in the game.
@@ -50,7 +50,6 @@ int port_has_flag(const char *name);  /* pc_main.c */
 #define REAVER_BIT(n)   (1UL << ((n) + 9))  /* debugRazielFlags1/2 */
 #define ABILITY_REAVER  0x8                 /* Raziel holds the Soul Reaver */
 #define ABILITY_SOUL_REAVER 0x9             /* the debug menu's Soul Reaver ability */
-#define REAVERS_ALL     0x3FC00
 
 #define CUT_POSSESSION  0x1
 #define CUT_SPIRIT      0x2
@@ -60,9 +59,7 @@ static long cutReavers;         /* 1 << reaver number, one at most */
 static long shownReavers;       /* what the page showed last frame */
 static int pendingReaver;       /* imbue this for a few more frames */
 static int pendingFrames;
-static int gaveReaver;          /* the Soul Reaver was this page's doing */
 static int wasMaterial = -1;    /* the realm last frame */
-static unsigned long abilitiesBefore;
 
 DebugMenuLine port_cutContentMenu[] = {
     {DEBUG_LINE_TYPE_MENU, 0, 0, "MAIN MENU...", (long *)standardMenu, 0},
@@ -117,14 +114,8 @@ static void pick(int reaver)
     {
         if ((debugRazielFlags1 & ABILITY_SOUL_REAVER) != ABILITY_SOUL_REAVER)
         {
-            /* the Soul Reaver ability (Raziel menu, Special Abilities);
-             * ProcessSpecialAbilities births and picks up the reaver */
-            if (!gaveReaver)
-            {
-                abilitiesBefore = debugRazielFlags1;
-                gaveReaver = 1;
-            }
-
+            /* the Soul Reaver ability (Raziel menu, Special Abilities), for
+             * good; ProcessSpecialAbilities births and picks up the reaver */
             debugRazielFlags1 |= ABILITY_SOUL_REAVER;
         }
 
@@ -143,19 +134,9 @@ static void pick(int reaver)
 
         printf("[rewraithed] -uncut: reaver %d (%s realm)\n", reaver, in_material() ? "material" : "spectral");
     }
-    else if (gaveReaver)
-    {
-        /* give back the abilities Raziel had: no reaver, no forged reavers */
-        debugRazielFlags1 = (debugRazielFlags1 & ~(REAVERS_ALL | ABILITY_SOUL_REAVER)) | (abilitiesBefore & (REAVERS_ALL | ABILITY_SOUL_REAVER));
-        debugRazielFlags2 = 0;
-        gaveReaver = 0;
-        pendingFrames = 0;
-
-        printf("[rewraithed] -uncut: reaver taken away\n");
-    }
     else
     {
-        /* his own reaver: back to the realm's plain blade */
+        /* the Soul Reaver stays: back to the realm's plain blade */
         debugRazielFlags2 = 0;
         pendingFrames = 0;
 
