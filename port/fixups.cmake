@@ -433,3 +433,38 @@ game_fixup(Game/RAZIEL/RAZIEL.c
 game_fixup(Game/RAZIEL/RAZIEL.c
     FIND    "        *rotz -= gameTrackerX.controlData[0][3] / 3;\n"
     REPLACE "        *rotz -= gameTrackerX.controlData[0][3] / 3;\n\n        port_mouse_look(rotx, rotz);\n")
+
+# Dreamcast models (port/src/dc_models.c): once Raziel or Kain is loaded,
+# the Dreamcast model replaces the PlayStation one. It lives outside the
+# game's memory, so the object relocation and the VRAM moves leave it alone.
+game_fixup(Game/STREAM.c
+    FIND    "    STREAM_PackVRAMObject(objectTracker);\n\n    OBTABLE_InitAnimPointers(objectTracker);\n"
+    REPLACE "    STREAM_PackVRAMObject(objectTracker);\n\n    {\n        extern void port_dc_object_loaded(char *name, Object *object);\n\n        port_dc_object_loaded(objectTracker->name, object);\n    }\n\n    OBTABLE_InitAnimPointers(objectTracker);\n")
+
+game_fixup(Game/MEMPACK.c
+    FIND    "    for (i = 0; i < object->numModels; i++)\n    {\n        object->modelList[i] = (Model *)OFFSET_DATA(object->modelList[i], offset);\n"
+    REPLACE "    for (i = 0; i < object->numModels; i++)\n    {\n        extern int port_dc_is_external_model(Model *model);\n\n        if (port_dc_is_external_model(object->modelList[i]))\n        {\n            continue;\n        }\n\n        object->modelList[i] = (Model *)OFFSET_DATA(object->modelList[i], offset);\n")
+
+game_fixup(Game/VRAM.c
+    FIND    "        model = object->modelList[d];\n\n        if (model->startTextures != NULL)\n"
+    REPLACE "        model = object->modelList[d];\n\n        {\n            extern int port_dc_is_external_model(Model *model);\n\n            if (port_dc_is_external_model(model))\n            {\n                continue;\n            }\n        }\n\n        if (model->startTextures != NULL)\n")
+
+# Primitives whose texture page has bit 15 set are drawn from a texture of
+# the port's (port/psycross/psyx_port.cpp), not from VRAM.
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "static void AddSplit(bool semiTrans, bool textured)\n{\n"
+    REPLACE "extern \"C\" TextureID PsyX_PortExtTexture(int slot, int *width, int *height);\n\nstatic void AddSplit(bool semiTrans, bool textured)\n{\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "\tif (textured && overrideTexture != 0)\n\t{\n\t\t// override texture format, zero tpage\n\t\ttexFormat = TF_32_BIT_RGBA;\n\t\ttextureId = overrideTexture;\n\t}\n"
+    REPLACE "\tint texWidth = overrideTextureWidth;\n\tint texHeight = overrideTextureHeight;\n\n\tif (textured && overrideTexture != 0)\n\t{\n\t\t// override texture format, zero tpage\n\t\ttexFormat = TF_32_BIT_RGBA;\n\t\ttextureId = overrideTexture;\n\t}\n\telse if (textured && (tpage & 0x8000))\n\t{\n\t\tTextureID ext = PsyX_PortExtTexture(tpage & 0x1F, &texWidth, &texHeight);\n\n\t\tif (ext != 0)\n\t\t{\n\t\t\ttexFormat = TF_32_BIT_RGBA;\n\t\t\ttextureId = ext;\n\t\t}\n\t}\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "\tsplit.drawenv.tw.w = overrideTextureWidth;\n\tsplit.drawenv.tw.h = overrideTextureHeight;\n"
+    REPLACE "\tsplit.drawenv.tw.w = texWidth;\n\tsplit.drawenv.tw.h = texHeight;\n")
+
+# RGBA textures: a texel with no alpha is not drawn (the Dreamcast textures'
+# cut-out parts, like the PSX's black texels).
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "\t\"\t\tvec2 tc = v_texcoord.xy * texelSize + texelSize * 0.5;\\n\"\\\n\t\"\t\tvec4 color = texture2D(s_texture, tc);\\n\"\\\n"
+    REPLACE "\t\"\t\tvec2 tc = v_texcoord.xy * texelSize + texelSize * 0.5;\\n\"\\\n\t\"\t\tvec4 color = texture2D(s_texture, tc);\\n\"\\\n\t\"\t\tif (color.a < 0.5) discard;\\n\"\\\n")

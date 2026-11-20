@@ -11,6 +11,8 @@
  *    follow the "Scaling" setting, 3D follows "Filtering").
  */
 #include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include <math.h>
 
 #include <SDL.h>
@@ -659,6 +661,56 @@ u_short PsyX_PortExtraButtons(void)
     }
 
     return ret;
+}
+
+/* --- textures from outside VRAM ---------------------------------------------
+ * RGBA textures the game side registers (port/src/dc_models.c: the
+ * Dreamcast models' textures), drawn for primitives whose texture page has
+ * bit 15 set, slot in its low 5 bits (fixup in PsyX_GPU.cpp, AddSplit). The
+ * GL texture is made on first use, on the thread that draws. */
+#define PORT_EXT_TEXTURES 32
+
+static unsigned char *ext_rgba[PORT_EXT_TEXTURES];
+static int ext_width[PORT_EXT_TEXTURES];
+static int ext_height[PORT_EXT_TEXTURES];
+static TextureID ext_texture[PORT_EXT_TEXTURES];
+
+void PsyX_PortSetExtTexture(int slot, const unsigned char *rgba, int width, int height)
+{
+    size_t size = (size_t)width * height * 4;
+
+    if ((slot < 0) || (slot >= PORT_EXT_TEXTURES) || (ext_rgba[slot] != NULL))
+    {
+        return;
+    }
+
+    ext_rgba[slot] = (unsigned char *)malloc(size);
+
+    if (ext_rgba[slot] != NULL)
+    {
+        memcpy(ext_rgba[slot], rgba, size);
+        ext_width[slot] = width;
+        ext_height[slot] = height;
+    }
+}
+
+/* 0 when the slot has no texture: the primitive is drawn from VRAM */
+TextureID PsyX_PortExtTexture(int slot, int *width, int *height)
+{
+    if ((slot < 0) || (slot >= PORT_EXT_TEXTURES) || (ext_rgba[slot] == NULL))
+    {
+        return 0;
+    }
+
+    if (ext_texture[slot] == 0)
+    {
+        ext_texture[slot] = GR_CreateRGBATexture(ext_width[slot], ext_height[slot], ext_rgba[slot]);
+    }
+
+    *width = ext_width[slot];
+    *height = ext_height[slot];
+
+    return ext_texture[slot];
 }
 
 int PsyX_PortTextureFilter(void)

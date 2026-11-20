@@ -4,6 +4,7 @@
 #ifndef REWRAITHED_MEMORY_MAP_H
 #define REWRAITHED_MEMORY_MAP_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #define PORT_PSX_SCRATCHPAD 0x1F800000u
@@ -13,6 +14,14 @@
 /* The game heap (MEMPACK), from overlayAddress to the end of "RAM". */
 #define PORT_HEAP_START     0x80100000u
 #define PORT_HEAP_END       (PORT_PSX_RAM + PORT_PSX_RAM_SIZE)
+
+/* Right above it, data the port loads itself and hands to the game (the
+ * Dreamcast models): PSX-style addresses too, for the same sign tests.
+ * Allocated with port_extra_alloc, never freed. */
+#define PORT_EXTRA_RAM      (PORT_PSX_RAM + PORT_PSX_RAM_SIZE)
+#define PORT_EXTRA_RAM_SIZE 0x00200000u     /* 2 MB */
+
+void *port_extra_alloc(size_t size);
 
 /* Ordering table links hold 24-bit addresses. Links below the size of the
  * PSX RAM view point into it (the PSX ORs 0x80000000 back in, see nextPrim);
