@@ -46,3 +46,6 @@ Game/PSX/SUPPORT.c          printf sprintf vsprintf atoi strcmpi
 
 # DEBUG.c has its own isdigit(); keep it private to that file.
 Game/DEBUG.c                isdigit
+
+# -skipcutscene: in-engine cutscenes are fast-forwarded (port/src/cutscene_hooks.c).
+Game/GAMELOOP.c             GAMELOOP_Process GAMELOOP_DisplayFrame

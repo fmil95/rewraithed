@@ -47,7 +47,9 @@ void CheckForDevStation(void)
  *                  the legal screen after them (see CINE_Play below)
  *   -debugmenu     unlock the debug menu (Square + Circle in game)
  *   -material      start in the material realm instead of the spectral one
- *   -skipcutscene  skip the start area's in-engine cutscene (e.g. under1's)
+ *   -skipcutscene  no cutscenes: under1's opening is left out (below), every
+ *                  other in-engine scene is fast-forwarded (cutscene_hooks.c)
+ *                  and the movies level scripts play are skipped (CINE_Play)
  *   -swim, -abilities <mask>: see port/src/raziel_hooks.c
  *   -vramlog       log object texture placement: see port/src/vram_hooks.c */
 void ProcessArgs(char *baseAreaName, GameTracker *gameTracker)
@@ -96,9 +98,9 @@ void ProcessArgs(char *baseAreaName, GameTracker *gameTracker)
         gameTracker->gameData.asmData.MorphType = 0;
     }
 
-    /* The debug menu's "Skip First Puppet Show": level event scripts test
-     * this bit (ATTR_SKIP_PUPPET_SHOW in EVENT.c) and leave out their
-     * cutscene. Nothing clears it. */
+    /* The debug menu's "Skip First Puppet Show": under1's opening script tests
+     * this bit (ATTR_SKIP_PUPPET_SHOW in EVENT.c) and leaves its cutscene out.
+     * Nothing clears it. The other scenes don't test it: cutscene_hooks.c. */
     if (port_has_flag("-skipcutscene"))
     {
         gameTracker->streamFlags |= 0x800000;
@@ -127,11 +129,17 @@ void SAVE_Init(GameTracker *gt)
 }
 
 /* -skiplogos: the two logo movies the game plays at boot (MAIN.c's
- * InterfaceItems) end at once; every other movie plays. */
+ * InterfaceItems) end at once. -skipcutscene: so do the movies level scripts
+ * play (CINE_PlayIngame's \CHRONO<n>.STR). Every other movie plays. */
 void CINE_Play(char *strfile, unsigned short mask, int buffers)
 {
     if (port_skip_logos() &&
         ((SDL_strcasecmp(strfile, "\\PUBLOGO.STR;1") == 0) || (SDL_strcasecmp(strfile, "\\CRYLOGO.STR;1") == 0)))
+    {
+        return;
+    }
+
+    if (port_has_flag("-skipcutscene") && (SDL_strncasecmp(strfile, "\\CHRONO", 7) == 0))
     {
         return;
     }
