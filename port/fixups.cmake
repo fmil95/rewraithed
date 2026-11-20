@@ -433,3 +433,50 @@ game_fixup(Game/RAZIEL/RAZIEL.c
 game_fixup(Game/RAZIEL/RAZIEL.c
     FIND    "        *rotz -= gameTrackerX.controlData[0][3] / 3;\n"
     REPLACE "        *rotz -= gameTrackerX.controlData[0][3] / 3;\n\n        port_mouse_look(rotx, rotz);\n")
+
+# Font glyphs are never filtered. They are POLY_FT4s cut from the font page
+# and drawn among the 3D polygons, so with Filtering set to Bilinear they
+# were filtered too, and the filter reads texels past each glyph's edge
+# (neighbouring glyphs, the cell borders): seams around every letter.
+# drawChar2DPoly marks them with bit 14 of the texture page (unused by the
+# GPU), and PsyCross gives them a draw batch of their own, unfiltered.
+game_fixup(Game/FONT.c
+    FIND    "    textPoly->tpage = fontTracker.font_tpage;\n"
+    REPLACE "    textPoly->tpage = fontTracker.font_tpage | 0x4000;\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "\tconst char*\t\tdebugText;\n};\n"
+    REPLACE "\tconst char*\t\tdebugText;\n\n\tint\t\t\t\tportFilter;\t// -1: the setting; 0: unfiltered (font glyphs)\n};\n\nextern \"C\" int g_port_force_filter;\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "\tint tpage = activeDrawEnv.tpage;\n\tGPUDrawSplit& curSplit = g_splits[g_splitIndex];\n"
+    REPLACE "\tint tpage = activeDrawEnv.tpage;\n\tGPUDrawSplit& curSplit = g_splits[g_splitIndex];\n\tconst int portFilter = (textured && (tpage & 0x4000)) ? 0 : -1;\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "\t\tcurSplit.debugText == currentSplitDebugText)\n"
+    REPLACE "\t\tcurSplit.debugText == currentSplitDebugText &&\n\t\tcurSplit.portFilter == portFilter)\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "\tsplit.debugText = currentSplitDebugText;\n"
+    REPLACE "\tsplit.debugText = currentSplitDebugText;\n\tsplit.portFilter = portFilter;\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "\tGR_SetTexture(split.textureId, split.texFormat);\n"
+    REPLACE "\t{\n\t\tconst int forced = g_port_force_filter;\n\n\t\tif (split.portFilter >= 0)\n\t\t{\n\t\t\tg_port_force_filter = split.portFilter;\n\t\t}\n\n\t\tGR_SetTexture(split.textureId, split.texFormat);\n\t\tg_port_force_filter = forced;\n\t}\n")
+
+# the marker is not part of the texture page the texels are read from
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "void MakeTexcoordTriangle(GrVertex* vertex, unsigned char* uv0, unsigned char* uv1, unsigned char* uv2, short page, short clut, unsigned char dither)\n{\n"
+    REPLACE "void MakeTexcoordTriangle(GrVertex* vertex, unsigned char* uv0, unsigned char* uv1, unsigned char* uv2, short page, short clut, unsigned char dither)\n{\n\tpage &= ~0x4000;\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "void MakeTexcoordQuad(GrVertex* vertex, unsigned char* uv0, unsigned char* uv1, unsigned char* uv2, unsigned char* uv3, short page, short clut, unsigned char dither)\n{\n"
+    REPLACE "void MakeTexcoordQuad(GrVertex* vertex, unsigned char* uv0, unsigned char* uv1, unsigned char* uv2, unsigned char* uv3, short page, short clut, unsigned char dither)\n{\n\tpage &= ~0x4000;\n")
+
+# Antialiasing: a pixel only partly covered by a polygon got its texture
+# coordinate at the pixel's centre, outside the polygon, so the texture was
+# read past its edge (lines and dots between font glyphs). Centroid
+# interpolation takes it inside the covered part.
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "\tvarying vec4 v_texcoord;\n"
+    REPLACE "\tcentroid varying vec4 v_texcoord;\n")
