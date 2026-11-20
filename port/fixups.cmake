@@ -480,3 +480,53 @@ psycross_fixup(gpu/PsyX_GPU.cpp
 psycross_fixup(render/PsyX_render.cpp
     FIND    "\tvarying vec4 v_texcoord;\n"
     REPLACE "\tcentroid varying vec4 v_texcoord;\n")
+
+# -uncut: possession (port/src/uncut_possession.c). The possessed monster's
+# commands go to MON_PossessedMessageHandler, as in the February prototype's
+# MON_IdleMessageHandler; the pad becomes those commands once it is read.
+game_fixup(Game/MONSTER/MONMSG.c
+    FIND    "    id = message->ID;\n\n    mv = (MonsterVars *)instance->extraData;\n\n    switch (id)\n    {\n    case 0x1000002:\n"
+    REPLACE "    id = message->ID;\n\n    mv = (MonsterVars *)instance->extraData;\n\n    {\n        extern int port_uncut_monster_message(Instance *instance, Message *message);\n\n        if (port_uncut_monster_message(instance, message))\n        {\n            return;\n        }\n    }\n\n    switch (id)\n    {\n    case 0x1000002:\n")
+
+game_fixup(Game/GAMEPAD.c
+    FIND    "    GAMEPAD_Commands((long(*)[5])gameTracker->controlCommand, (long(*)[5])gameTracker->controlData, 1);\n}\n"
+    REPLACE "    GAMEPAD_Commands((long(*)[5])gameTracker->controlCommand, (long(*)[5])gameTracker->controlData, 1);\n\n    {\n        extern void port_uncut_frame(GameTracker *gameTracker);\n\n        port_uncut_frame(gameTracker);\n    }\n}\n")
+
+# NULL read: a monster attacking with no target (a controlled one, as with
+# -uncut possession) marked that target at the end of the swing.
+game_fixup(Game/MONSTER/MONSTER.c
+    FIND    "        MON_TurnOffWeaponSpheres(instance);\n        enemy->mirConditions |= 0x200;\n"
+    REPLACE "        MON_TurnOffWeaponSpheres(instance);\n\n        if (enemy != NULL)\n        {\n            enemy->mirConditions |= 0x200;\n        }\n")
+
+# -uncut: a possessed monster's attack goes where it faces; the attack state
+# would turn it to its enemy (Raziel, standing by).
+game_fixup(Game/MONSTER/MONSTER.c
+    FIND    "    if (enemy != NULL && (MON_GetTime(instance) < (unsigned int)mv->generalTimer || !(INSTANCE_Query(enemy->instance, 0xA) & 0x02000000)))\n"
+    REPLACE "    if (enemy != NULL && !port_uncut_is_possessed(instance) && (MON_GetTime(instance) < (unsigned int)mv->generalTimer || !(INSTANCE_Query(enemy->instance, 0xA) & 0x02000000)))\n")
+
+game_fixup(Game/MONSTER/MONSTER.c
+    FIND    "void MON_AttackEntry(Instance *instance)\n"
+    REPLACE "int port_uncut_is_possessed(Instance *instance);\n\nvoid MON_AttackEntry(Instance *instance)\n")
+
+# -uncut: a possessed monster's projectile flies where it faces; the
+# projectile state would only fire at its enemy (Raziel) and turn to him.
+game_fixup(Game/MONSTER/MONSTER.c
+    FIND    "    missileDef = &ma->missileList[(signed char)mv->subAttr->combatAttributes->missileAttack];\n\n    if (mv->enemy == NULL)\n"
+    REPLACE "    missileDef = &ma->missileList[(signed char)mv->subAttr->combatAttributes->missileAttack];\n\n    if ((mv->enemy == NULL) && !port_uncut_is_possessed(instance))\n")
+
+game_fixup(Game/MONSTER/MONSTER.c
+    FIND    "            MISSILE_FireAtInstance(instance, missileDef, mv->enemy->instance);\n"
+    REPLACE "            if (port_uncut_is_possessed(instance))\n            {\n                extern void port_uncut_fire_missile(Instance *instance, MonsterMissile *missileDef);\n\n                port_uncut_fire_missile(instance, missileDef);\n            }\n            else\n            {\n                MISSILE_FireAtInstance(instance, missileDef, mv->enemy->instance);\n            }\n")
+
+game_fixup(Game/MONSTER/MONSTER.c
+    FIND    "        MON_TurnToPosition(instance, &mv->enemy->instance->position, mv->subAttr->speedPivotTurn);\n    }\n\n    MON_DefaultQueueHandler(instance);\n}\n"
+    REPLACE "        if (!port_uncut_is_possessed(instance))\n        {\n            MON_TurnToPosition(instance, &mv->enemy->instance->position, mv->subAttr->speedPivotTurn);\n        }\n    }\n\n    MON_DefaultQueueHandler(instance);\n}\n")
+
+# -uncut: a cutscene puppets Raziel (0x4000E); possession ends before it.
+game_fixup(Game/RAZIEL/RAZIEL.c
+    FIND    "            Raziel.returnState = StateHandlerPuppetShow;\n"
+    REPLACE "            {\n                extern void port_uncut_cutscene(int on);\n\n                port_uncut_cutscene(1);\n            }\n\n            Raziel.returnState = StateHandlerPuppetShow;\n")
+
+game_fixup(Game/RAZIEL/RAZIEL.c
+    FIND    "            Instance *heldWeapon;\n\n            Raziel.Senses.Flags &= ~0x10;\n\n            ControlFlag &= ~0x20000;\n"
+    REPLACE "            Instance *heldWeapon;\n\n            {\n                extern void port_uncut_cutscene(int on);\n\n                port_uncut_cutscene(0);\n            }\n\n            Raziel.Senses.Flags &= ~0x10;\n\n            ControlFlag &= ~0x20000;\n")
