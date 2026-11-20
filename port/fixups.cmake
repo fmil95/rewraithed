@@ -449,6 +449,25 @@ game_fixup(Game/VRAM.c
     FIND    "        model = object->modelList[d];\n\n        if (model->startTextures != NULL)\n"
     REPLACE "        model = object->modelList[d];\n\n        {\n            extern int port_dc_is_external_model(Model *model);\n\n            if (port_dc_is_external_model(model))\n            {\n                continue;\n            }\n        }\n\n        if (model->startTextures != NULL)\n")
 
+# Primitive pools of 64000 words instead of 24000. A model is drawn only
+# when numFaces * 12 words are still free in the frame's pool
+# (PIPE3D_InstanceTransformAndDraw), and the Dreamcast Raziel, with his
+# two-sided faces, needs 29328: past the level's own primitives the
+# PlayStation pools no longer had that much, and he was not drawn at all.
+# The pools stay in the game heap: ordering table links are 24-bit and only
+# lead back into the PSX RAM view (PORT_OT_PTR).
+game_fixup(Game/GAMELOOP.c
+    FIND    "    primBase = MEMPACK_Malloc(216600, MEMORY_TYPE_GAME_STATIC);\n"
+    REPLACE "    primBase = MEMPACK_Malloc((3072 * 4) + (3072 * 4) + (2 * (12 + (64000 * 4))), MEMORY_TYPE_GAME_STATIC);\n")
+
+game_fixup(Game/GAMELOOP.c
+    FIND    "    primPool[1] = (PrimPool *)(primBase + ((3072 * 4) + (3072 * 4) + 96012));\n"
+    REPLACE "    primPool[1] = (PrimPool *)(primBase + ((3072 * 4) + (3072 * 4) + (12 + (64000 * 4))));\n")
+
+game_fixup(Game/GAMELOOP.c
+    FIND    "    primPool[0]->lastPrim = &primPool[0]->prim[23988];\n    primPool[1]->lastPrim = &primPool[1]->prim[23988];\n"
+    REPLACE "    primPool[0]->lastPrim = &primPool[0]->prim[63988];\n    primPool[1]->lastPrim = &primPool[1]->prim[63988];\n")
+
 # Primitives whose texture page has bit 15 set are drawn from a texture of
 # the port's (port/psycross/psyx_port.cpp), not from VRAM.
 psycross_fixup(gpu/PsyX_GPU.cpp

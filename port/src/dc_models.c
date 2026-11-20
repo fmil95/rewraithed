@@ -24,6 +24,7 @@
 #include "common.h"
 #include "port/memory_map.h"
 
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -270,29 +271,22 @@ static int dc_vertex_segment(Model *model, int vertex)
     return -1;
 }
 
-/* Faces drawn from both sides:
- *  - those with flag 0x10, which the Dreamcast draws from both sides and the
- *    PSX drawing code skips outright (40 of Raziel's);
- *  - those joining two segments (knees, elbows, hips). The models are
- *    skinned rigidly, one segment per bone, so where a joint bends these
- *    stretch and fold over and can turn their back to the camera: the PSX
- *    drawing code culls them and holes open (behind Raziel's knee). The
- *    Dreamcast's own renderer draws the models without culling.
- * Each becomes a normal face plus a copy wound the other way round with its
- * UVs to match, so that one of the two always faces the camera. The face
- * list is rebuilt, larger, in the port data area. */
+/* Every face is drawn from both sides. The Dreamcast's own renderer draws
+ * these models without culling, and they were made for it: some faces are
+ * wound the wrong way round (the back of Raziel's right calf), others have
+ * flag 0x10 (drawn from both sides there, skipped outright by the PSX
+ * drawing code), and those joining two segments fold over where a joint
+ * bends. The PSX drawing code culls faces that turn their back to the
+ * camera, and holes opened. Each face becomes itself plus a copy wound the
+ * other way round with its UVs to match, so that one of the two always
+ * faces the camera. The face list is rebuilt, twice as long, in the port
+ * data area (the primitive pools are larger to match, GAMELOOP.c fixups). */
 static int dc_two_sided(Model *model, MFace *face)
 {
-    int s0;
+    (void)model;
+    (void)face;
 
-    if (face->flags & 0x10)
-    {
-        return 1;
-    }
-
-    s0 = dc_vertex_segment(model, face->face.v0);
-
-    return (dc_vertex_segment(model, face->face.v1) != s0) || (dc_vertex_segment(model, face->face.v2) != s0);
+    return 1;
 }
 
 static void dc_double_sided_faces(Model *model, const char *name)
@@ -538,3 +532,4 @@ void port_dc_object_loaded(char *name, Object *object)
         object->modelList[0] = dc->model;
     }
 }
+
