@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.24)
 
 project(rewraithed LANGUAGES C CXX)
 
-# Shown by the launcher; bump with each release (v0.99f is Beta 6).
-set(REWRAITHED_VERSION "0.99f")
+# Shown by the launcher; bump with each release (v0.99g is Beta 7).
+set(REWRAITHED_VERSION "0.99g")
 
 # Discord Rich Presence: the Application ID of the "Rewraithed" application
 # in the Discord Developer Portal (discord.com/developers/applications).

@@ -15,7 +15,8 @@
  *    (message 0x4000E: its AI stands aside), and the camera follows it;
  *  - each frame the pad becomes the February messages, posted to it, and
  *    Raziel's own controls are cleared (but for Start and Select);
- *  - Feed again, or the monster's death, gives Raziel back his body;
+ *  - Feed again, or the monster's death, gives Raziel back his body (and
+ *    so does turning possession off on the debug menu's Cut Content page);
  *  - Attack by a switch (a valve, a lever) works it, as Raziel does;
  *  - a cutscene (Raziel puppeted by a level script) gives Raziel back his
  *    body before it starts, and none can be possessed until it ends. One
@@ -44,6 +45,8 @@ extern GameTracker gameTrackerX;
 extern MainTracker mainTrackerX;
 
 int port_has_flag(const char *name);  /* pc_main.c */
+void port_cut_content_frame(void);    /* uncut_content.c */
+int port_cut_possession_on(void);
 int ratan2(int y, int x);
 int rsin(int a);
 int rcos(int a);
@@ -585,7 +588,14 @@ void port_uncut_frame(GameTracker *gameTracker)
 
     previousHeld = held;
 
-    if (!uncut_enabled() || (mainTrackerX.mainState != 1) || (gameTracker->playerInstance == NULL))
+    if (!uncut_enabled())
+    {
+        return;
+    }
+
+    port_cut_content_frame();
+
+    if ((mainTrackerX.mainState != 1) || (gameTracker->playerInstance == NULL))
     {
         return;
     }
@@ -598,6 +608,17 @@ void port_uncut_frame(GameTracker *gameTracker)
 
     if ((gameTracker->gameMode != 0) || inCutscene)
     {
+        return;
+    }
+
+    /* turned off on the debug menu's Cut Content page */
+    if (!port_cut_possession_on())
+    {
+        if (possessed != NULL)
+        {
+            release(1);
+        }
+
         return;
     }
 

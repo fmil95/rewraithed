@@ -601,11 +601,11 @@ game_fixup(Game/FX.c
     FIND    "    glyphnum *= 4;\n\n    color_array = glyphtunedata->color_array;\n"
     REPLACE "    if (glyphnum == 8)\n    {\n        static long spirit_colors[4] = {0x2D852F, 0x2D852F, 0x3FE917, 0x3FE917};\n\n        glyphnum = 0;\n\n        color_array = spirit_colors;\n    }\n    else\n    {\n        glyphnum *= 4;\n\n        color_array = glyphtunedata->color_array;\n    }\n")
 
-# Raziel casts it (with the Stone Glyph's motions), outside water and the
-# spectral realm only, as the other glyphs.
+# Raziel casts it (with the Sound Glyph's motions, without its sound),
+# outside water and the spectral realm only, as the other glyphs.
 game_fixup(Game/RAZIEL/RAZIEL.c
     FIND    "        case 0x80002:\n            if (CurrentSection == 0)\n            {\n                razPrepGlyph();\n\n                razSwitchStringAnimation(In->CharacterInstance, 2);\n"
-    REPLACE "        case 0x80008:\n        case 0x80002:\n            if (CurrentSection == 0)\n            {\n                razPrepGlyph();\n\n                razSwitchStringAnimation(In->CharacterInstance, 2);\n")
+    REPLACE "        case 0x80008:\n            if (CurrentSection == 0)\n            {\n                razPrepGlyph();\n\n                razSwitchStringAnimation(In->CharacterInstance, 4);\n            }\n\n            In->SectionList[CurrentSection].Data1 = 0;\n            break;\n        case 0x80002:\n            if (CurrentSection == 0)\n            {\n                razPrepGlyph();\n\n                razSwitchStringAnimation(In->CharacterInstance, 2);\n")
 
 game_fixup(Game/RAZIEL/RAZIEL.c
     FIND    "        ability = Raziel.Abilities & 0x1FC0000;\n"
@@ -615,3 +615,34 @@ game_fixup(Game/RAZIEL/RAZIEL.c
 game_fixup(Game/MONSTER/MONMSG.c
     FIND    "    case 0x80002:\n        if (instance->petrifyValue == 0)\n"
     REPLACE "    case 0x80008:\n    {\n        extern void port_uncut_spirit_hit(Instance *instance);\n\n        port_uncut_spirit_hit(instance);\n        break;\n    }\n    case 0x80002:\n        if (instance->petrifyValue == 0)\n")
+
+# -uncut: the debug menu's Cut Content page (port/src/uncut_content.c). A
+# spare line after the main debug menu's end; with -uncut it becomes the
+# menu's last line.
+game_fixup(Game/DEBUG.c
+    FIND    "    {DEBUG_LINE_TYPE_BIT, 0, 0, \"MUSIC ON\", &gameTrackerX.debugFlags2, 0x1000},\n    {DEBUG_LINE_TYPE_ENDLIST, 0, 0, \"\", &gameTrackerX.debugFlags, 0},\n};\n"
+    REPLACE "    {DEBUG_LINE_TYPE_BIT, 0, 0, \"MUSIC ON\", &gameTrackerX.debugFlags2, 0x1000},\n    {DEBUG_LINE_TYPE_ENDLIST, 0, 0, \"\", &gameTrackerX.debugFlags, 0},\n    {DEBUG_LINE_TYPE_ENDLIST, 0, 0, \"Cut Content...\", (long *)port_cutContentMenu, 0},\n};\n")
+
+game_fixup(Game/DEBUG.c
+    FIND    "DebugMenuLine standardMenu[] = {\n"
+    REPLACE "extern DebugMenuLine port_cutContentMenu[];\n\nDebugMenuLine standardMenu[] = {\n")
+
+# -uncut: April's reavers of an element hit with it: Sunlight 0x40, Water
+# 0x10, Stone 0x400, Spirit 0x800, Sound 0x200 (July: only Spectral,
+# Material and Fire), and their colours replace July's placeholders.
+game_fixup(Game/REAVER.c
+    FIND    "                case 6:\n                    type = 32;\n                    break;\n                }\n"
+    REPLACE "                case 6:\n                    type = 32;\n                    break;\n                case 3:\n                    type = 0x40;\n                    break;\n                case 4:\n                    type = 0x10;\n                    break;\n                case 5:\n                    type = 0x400;\n                    break;\n                case 7:\n                    type = 0x800;\n                    break;\n                case 8:\n                    type = 0x200;\n                    break;\n                }\n")
+
+game_fixup(Game/REAVER.c
+    FIND    "        case 6:\n            level = STREAM_GetLevelWithID(instance->currentStreamUnitID);\n"
+    REPLACE "        case 3:\n            reavType = 0x40;\n            break;\n        case 4:\n            reavType = 0x10;\n            break;\n        case 5:\n            reavType = 0x400;\n            break;\n        case 7:\n            reavType = 0x800;\n            break;\n        case 8:\n            reavType = 0x200;\n            break;\n        case 6:\n            level = STREAM_GetLevelWithID(instance->currentStreamUnitID);\n")
+
+game_fixup(Game/REAVER.c
+    FIND    "    FX_ReaverBladeInit();\n}\n"
+    REPLACE "    {\n        extern void port_uncut_reaver_colors(Instance *reaver);\n\n        port_uncut_reaver_colors(instance);\n    }\n\n    FX_ReaverBladeInit();\n}\n")
+
+# ... and April's monsters react to the element (MON_DefaultMessageHandler).
+game_fixup(Game/MONSTER/MONMSG.c
+    FIND    "        damage = 0;\n\n        switch (mv->damageType)\n        {\n        case 0x20:\n"
+    REPLACE "        damage = 0;\n\n        extern int port_uncut_reaver_hit(Instance *instance, evMonsterHitData *data, int *fatal, int *damage);\n\n        switch (port_uncut_reaver_hit(instance, data, &fatal, &damage) ? -1 : mv->damageType)\n        {\n        case -1:\n            break;\n        case 0x20:\n")

@@ -9,11 +9,13 @@
  * (GLYPH.c, MONMSG.c and FX.c fixups):
  *
  *  - the menu turns in eighths of a circle instead of sevenths;
- *  - it is always known; like the other glyphs, it can only be cast in the
+ *  - it is always known (the debug menu's Cut Content page can turn it
+ *    off); like the other glyphs, it can only be cast in the
  *    material realm and out of water;
  *  - it costs no mana, as all of April's glyphs;
- *  - Raziel casts it with the Stone Glyph's motions (April used one cast
- *    animation for all glyphs; July has one per glyph);
+ *  - Raziel casts it with the Sound Glyph's motions, without its sound
+ *    (April used one cast animation for all glyphs; July has one per
+ *    glyph);
  *  - its icon is the icon sheet's eighth cell. On the July disc that is an
  *    unused swirl; tools/uncut_spirit_icon.py copies April's Spirit Glyph
  *    icon there, into the mods folder.
@@ -36,9 +38,11 @@ int port_has_flag(const char *name);  /* pc_main.c */
 #define SPIRIT_ABILITY  (1 << (SPIRIT_GLYPH + 17))
 #define SPIRIT_COST     0
 
+int port_cut_spirit_on(void);  /* uncut_content.c: the debug menu's switch */
+
 static int uncut = -1;
 
-static int spirit_enabled(void)
+static int uncut_flag(void)
 {
     if (uncut < 0)
     {
@@ -51,6 +55,11 @@ static int spirit_enabled(void)
     }
 
     return uncut;
+}
+
+static int spirit_enabled(void)
+{
+    return uncut_flag() && port_cut_spirit_on();
 }
 
 /* glyphs in the menu, and the turn from one to the next */
