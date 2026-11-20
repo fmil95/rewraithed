@@ -530,3 +530,88 @@ game_fixup(Game/RAZIEL/RAZIEL.c
 game_fixup(Game/RAZIEL/RAZIEL.c
     FIND    "            Instance *heldWeapon;\n\n            Raziel.Senses.Flags &= ~0x10;\n\n            ControlFlag &= ~0x20000;\n"
     REPLACE "            Instance *heldWeapon;\n\n            {\n                extern void port_uncut_cutscene(int on);\n\n                port_uncut_cutscene(0);\n            }\n\n            Raziel.Senses.Flags &= ~0x10;\n\n            ControlFlag &= ~0x20000;\n")
+
+# -uncut: the Spirit Glyph (port/src/uncut_spirit.c), glyph 8 of an eight
+# glyph menu: the menu's size and turn, the glyph's bit, cost and message.
+game_fixup(Game/GLYPH.c
+    FIND    "static short fx_going = 0;\n"
+    REPLACE "static short fx_going = 0;\n\nint port_uncut_glyphs(void);\nint port_uncut_glyph_step(void);\nlong port_uncut_spirit_ability(void);\nint port_uncut_spirit_cost(void);\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "    abilities = INSTANCE_Query(gameTrackerX.playerInstance, queryRazielAbilities) | debugRazielFlags3;\n\n    return (1 << (glyph + 17)) & abilities;\n"
+    REPLACE "    if (glyph == 8)\n    {\n        return port_uncut_spirit_ability();\n    }\n\n    abilities = INSTANCE_Query(gameTrackerX.playerInstance, queryRazielAbilities) | debugRazielFlags3;\n\n    return (1 << (glyph + 17)) & abilities;\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "    return (unsigned char)glyphtunedata->glyph_costs[glyphNum - 1];\n"
+    REPLACE "    if (glyphNum == 8)\n    {\n        return port_uncut_spirit_cost();\n    }\n\n    return (unsigned char)glyphtunedata->glyph_costs[glyphNum - 1];\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "    for (n = 0; n < 7; rot -= 585, n++)\n"
+    REPLACE "    for (n = 0; n < port_uncut_glyphs(); rot -= port_uncut_glyph_step(), n++)\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "        if (_GlyphIsGlyphSet(n + 1) != 0)\n        {\n            num = n;\n"
+    REPLACE "        if (_GlyphIsGlyphSet(n + 1) != 0)\n        {\n            num = (n == 7) ? 8 : n;\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "data->target_glyph_rotation = 3510;"
+    REPLACE "data->target_glyph_rotation = 6 * port_uncut_glyph_step();")
+
+game_fixup(Game/GLYPH.c
+    FIND    "(data->selectedGlyph - 1) * 585;"
+    REPLACE "(data->selectedGlyph - 1) * port_uncut_glyph_step();")
+
+game_fixup(Game/GLYPH.c
+    FIND    "                    if (--data->selectedGlyph <= 0)\n                    {\n                        data->selectedGlyph = 7;\n"
+    REPLACE "                    if (--data->selectedGlyph <= 0)\n                    {\n                        data->selectedGlyph = port_uncut_glyphs();\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "                    if (data->selectedGlyph >= 8)\n"
+    REPLACE "                    if (data->selectedGlyph > port_uncut_glyphs())\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "    case 7:\n        message = 0x80007;\n        break;\n    }\n"
+    REPLACE "    case 7:\n        message = 0x80007;\n        break;\n    case 8:\n        message = 0x80008;\n        break;\n    }\n")
+
+# The Spirit Glyph's ring (April's Glyph_DoSpell): green, from 10752 away,
+# closing in on Raziel; it ends once it reaches him. Monsters and humans it
+# crosses on its way in get 0x80008.
+game_fixup(Game/GLYPH.c
+    FIND    "    case 7:\n        return;\n    }\n"
+    REPLACE "    case 7:\n        return;\n    case 8:\n        whatAmIMask = 0xA;\n        Message     = 0x80008;\n        break;\n    }\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "            if (((dist <= radius) && (radius_old < old_dist)) && ("
+    REPLACE "            if ((((glyphnum == 8) ? ((dist >= radius) && (old_dist < radius_old)) : ((dist <= radius) && (radius_old < old_dist)))) && (")
+
+game_fixup(Game/GLYPH.c
+    FIND    "    case 7:\n        break;\n    }\n\n    if (fx_going != 0)\n    {\n"
+    REPLACE "    case 7:\n        break;\n    case 8:\n        blast_range = 10752;\n\n        fx_blastring = FX_DoBlastRing(NULL, (SVector *)&instance->position, &mat, -1, 10752, 0, 7168, 80, 160, -1048576, 12288, 0, 512, 1024, 0xFF00, 0, 0, -99, 0);\n\n        if (fx_blastring != NULL)\n        {\n            fx_going = 8;\n        }\n\n        break;\n    }\n\n    if ((fx_going != 0) && (glyphnum != 8))\n    {\n")
+
+game_fixup(Game/GLYPH.c
+    FIND    "        if (fx_blastring->radius > blast_range)\n"
+    REPLACE "        if ((fx_going == 8) ? ((fx_blastring->radius < 0) || (fx_blastring->vel >= 0)) : (fx_blastring->radius > blast_range))\n")
+
+# Its icon: the sheet's eighth cell, in April's Spirit Glyph colours.
+game_fixup(Game/FX.c
+    FIND    "    if (glyphObject == NULL)\n    {\n        return;\n    }\n\n    if (glyphnum == 7)\n"
+    REPLACE "    if (glyphObject == NULL)\n    {\n        return;\n    }\n\n    if (glyphnum == 8)\n    {\n        texture = FX_GetTextureObject(glyphObject, 0, 7);\n    }\n    else if (glyphnum == 7)\n")
+
+game_fixup(Game/FX.c
+    FIND    "    glyphnum *= 4;\n\n    color_array = glyphtunedata->color_array;\n"
+    REPLACE "    if (glyphnum == 8)\n    {\n        static long spirit_colors[4] = {0x2D852F, 0x2D852F, 0x3FE917, 0x3FE917};\n\n        glyphnum = 0;\n\n        color_array = spirit_colors;\n    }\n    else\n    {\n        glyphnum *= 4;\n\n        color_array = glyphtunedata->color_array;\n    }\n")
+
+# Raziel casts it (with the Stone Glyph's motions), outside water and the
+# spectral realm only, as the other glyphs.
+game_fixup(Game/RAZIEL/RAZIEL.c
+    FIND    "        case 0x80002:\n            if (CurrentSection == 0)\n            {\n                razPrepGlyph();\n\n                razSwitchStringAnimation(In->CharacterInstance, 2);\n"
+    REPLACE "        case 0x80008:\n        case 0x80002:\n            if (CurrentSection == 0)\n            {\n                razPrepGlyph();\n\n                razSwitchStringAnimation(In->CharacterInstance, 2);\n")
+
+game_fixup(Game/RAZIEL/RAZIEL.c
+    FIND    "        ability = Raziel.Abilities & 0x1FC0000;\n"
+    REPLACE "        {\n            extern long port_uncut_spirit_ability(void);\n\n            ability = (Raziel.Abilities & 0x1FC0000) | port_uncut_spirit_ability();\n        }\n")
+
+# The ring kills the monsters and humans it reaches.
+game_fixup(Game/MONSTER/MONMSG.c
+    FIND    "    case 0x80002:\n        if (instance->petrifyValue == 0)\n"
+    REPLACE "    case 0x80008:\n    {\n        extern void port_uncut_spirit_hit(Instance *instance);\n\n        port_uncut_spirit_hit(instance);\n        break;\n    }\n    case 0x80002:\n        if (instance->petrifyValue == 0)\n")
