@@ -46,9 +46,14 @@ typedef struct
     int dithering;
     int preloadChunks;      /* load every neighbouring stream unit at once */
     int debugMenu;          /* Square + Circle in game */
-    int logging;            /* rewraithed.log */
+    int logging;            /* rewraithed.log, and VRAM dumps (F12, crash) */
     int fpsLimit;           /* 0 = unlimited */
     int discordPresence;    /* Discord Rich Presence */
+    int dcModels;           /* Raziel's and Kain's Dreamcast models, from the
+                               Dreamcast disc in the "dreamcast" folder */
+    int protoAssets;        /* assets from the April 1999 prototype's disc
+                               in the "proto" folder (the Spirit Glyph icon) */
+    char parameters[256];   /* extra command-line options (-uncut, ...) */
 
     /* keyboard: SDL scancode names; each button has a second, alternate key
      * ("" for none) */
@@ -57,11 +62,21 @@ typedef struct
 
     /* mouse: MOUSE_* button for each MOUSE_* action */
     int mouse[MOUSE_COUNT];
+
+    /* joystick (an SDL game controller): on or off, and the controller
+     * button for each PSX button, by SDL's names ("a", "lefttrigger",
+     * "dpup", ...; "none" for none). The left stick also moves. */
+    int joystick;
+    char joy[BIND_COUNT][24];
 } PortSettings;
 
 extern const char *const port_bind_names[BIND_COUNT];
 extern const char *const port_mouse_action_names[MOUSE_COUNT];
 extern const char *const port_mouse_button_names[MOUSE_BUTTON_COUNT];
+
+/* the controller buttons a PSX button can be given, by SDL's names */
+#define JOY_BUTTON_COUNT 17
+extern const char *const port_joy_button_names[JOY_BUTTON_COUNT];
 
 /* the game's settings (port/src/pc_main.c) */
 extern PortSettings port_settings;

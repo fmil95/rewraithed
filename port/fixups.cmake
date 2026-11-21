@@ -85,6 +85,13 @@ game_fixup(Game/MONSTER/MONLIB.c
     FIND    "    d = data->knockBackDistance;\n    t = data->knockBackDuration;\n"
     REPLACE "    d = (data != NULL) ? data->knockBackDistance : 0;\n    t = (data != NULL) ? data->knockBackDuration : 0;\n")
 
+# NULL read: Kain, removed with pillars1 when Raziel leaves it, drops what he
+# holds, and the dropped object, never drawn, has no segment matrices yet;
+# on PSX the reads hit low RAM and the realignment does nothing.
+game_fixup(Game/PHYSOBS.c
+    FIND    "    model = instance->object->modelList[instance->currentModel];\n\n    startFlg = 0;\n"
+    REPLACE "    model = instance->object->modelList[instance->currentModel];\n\n    if (instance->matrix == NULL)\n    {\n        return 0;\n    }\n\n    startFlg = 0;\n")
+
 # NULL read: a monster first sensing an ally instance that has no extra
 # data (seen on the water path between city19 and city9); on PSX the flag
 # test reads zero there.
@@ -219,6 +226,18 @@ game_fixup(Game/DEBUG.c
 # --- PsyCross ----------------------------------------------------------------
 # psycross_fixup(<file under PsyCross/src> FIND <text> REPLACE <text>)
 # Behaviour PsyCross does not reproduce from the PSX hardware.
+
+# Joystick (launcher setting, port/src/pc_main.c): off, the controller is
+# not read. The game runs the pad in digital mode, where PsyCross gives the
+# left stick only as analog values the game does not read: past half way it
+# also presses the d-pad direction.
+psycross_fixup(pad/PsyX_pad.cpp
+    FIND    "void PsyX_Pad_UpdateGameControllerInput(SDL_GameController* cont, LPPADRAW pad)\n{\n"
+    REPLACE "extern \"C\" { int g_port_joystick = 1; }\n\nvoid PsyX_Pad_UpdateGameControllerInput(SDL_GameController* cont, LPPADRAW pad)\n{\n\tif (!g_port_joystick)\n\t\tcont = NULL;\n\n")
+
+psycross_fixup(pad/PsyX_pad.cpp
+    FIND    "\trightY = GetControllerButtonState(cont, mapping.gc_axis_right_y);\n"
+    REPLACE "\trightY = GetControllerButtonState(cont, mapping.gc_axis_right_y);\n\n\tif (leftX < -16384) ret &= ~0x80;\n\tif (leftX > 16384) ret &= ~0x20;\n\tif (leftY < -16384) ret &= ~0x10;\n\tif (leftY > 16384) ret &= ~0x40;\n")
 
 # VRAM copies (MoveImage, DR_MOVE packets): the GPU wraps coordinates and
 # never writes outside its 1024x512 VRAM; clip instead of overrunning memory.
@@ -444,6 +463,12 @@ game_fixup(Game/STREAM.c
 game_fixup(Game/MEMPACK.c
     FIND    "    for (i = 0; i < object->numModels; i++)\n    {\n        object->modelList[i] = (Model *)OFFSET_DATA(object->modelList[i], offset);\n"
     REPLACE "    for (i = 0; i < object->numModels; i++)\n    {\n        extern int port_dc_is_external_model(Model *model);\n\n        if (port_dc_is_external_model(object->modelList[i]))\n        {\n            continue;\n        }\n\n        object->modelList[i] = (Model *)OFFSET_DATA(object->modelList[i], offset);\n")
+
+# ... nor the instances' animation model pointers (a moved Kain or Raziel
+# kept pointing past the port data area: crash on the next frame).
+game_fixup(Game/MEMPACK.c
+    FIND    "            if (instance->object == oldObject)\n            {\n                instance->anim.modelData = (Model *)OFFSET_DATA(instance->anim.modelData, offset);\n            }\n"
+    REPLACE "            extern int port_dc_is_external_model(Model *model);\n\n            if ((instance->object == oldObject) && !port_dc_is_external_model(instance->anim.modelData))\n            {\n                instance->anim.modelData = (Model *)OFFSET_DATA(instance->anim.modelData, offset);\n            }\n")
 
 game_fixup(Game/VRAM.c
     FIND    "        model = object->modelList[d];\n\n        if (model->startTextures != NULL)\n"

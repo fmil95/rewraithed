@@ -38,6 +38,19 @@ static const char *const default_keys2[BIND_COUNT] = {
     "", "",
 };
 
+/* joystick defaults: the PlayStation pad's layout on an Xbox-style pad */
+static const char *const default_joy[BIND_COUNT] = {
+    "dpup", "dpdown", "dpleft", "dpright",
+    "a", "b", "x", "y",
+    "leftshoulder", "lefttrigger", "rightshoulder", "righttrigger",
+    "back", "start",
+};
+
+const char *const port_joy_button_names[JOY_BUTTON_COUNT] = {
+    "none", "a", "b", "x", "y", "leftshoulder", "rightshoulder", "lefttrigger", "righttrigger",
+    "leftstick", "rightstick", "back", "start", "dpup", "dpdown", "dpleft", "dpright",
+};
+
 const char *const port_mouse_action_names[MOUSE_COUNT] = { "Attack", "Telekinesis", "Aim" };
 const char *const port_mouse_button_names[MOUSE_BUTTON_COUNT] = { "None", "Left", "Middle", "Right", "X1", "X2" };
 
@@ -76,6 +89,13 @@ void port_settings_defaults(PortSettings *s)
     s->mouse[MOUSE_ATTACK] = MOUSE_LEFT;
     s->mouse[MOUSE_TELEKINESIS] = MOUSE_MIDDLE;
     s->mouse[MOUSE_AIM] = MOUSE_RIGHT;
+
+    s->joystick = 1;
+
+    for (i = 0; i < BIND_COUNT; i++)
+    {
+        strncpy(s->joy[i], default_joy[i], sizeof(s->joy[i]) - 1);
+    }
 }
 
 void port_settings_path(char *out, size_t size)
@@ -208,6 +228,24 @@ int port_settings_load(PortSettings *s, const char *path)
             continue;
         }
 
+        if (_stricmp(section, "Joystick") == 0)
+        {
+            if (_stricmp(key, "Enabled") == 0)
+            {
+                s->joystick = yes(value);
+            }
+
+            for (i = 0; i < BIND_COUNT; i++)
+            {
+                if ((_stricmp(key, port_bind_names[i]) == 0) && (*value != '\0'))
+                {
+                    snprintf(s->joy[i], sizeof(s->joy[i]), "%s", value);
+                }
+            }
+
+            continue;
+        }
+
         if (_stricmp(section, "Keys") == 0)
         {
             for (i = 0; i < BIND_COUNT; i++)
@@ -259,6 +297,9 @@ int port_settings_load(PortSettings *s, const char *path)
         else if (_stricmp(key, "Logging") == 0)         s->logging = yes(value);
         else if (_stricmp(key, "FPSLimit") == 0)        s->fpsLimit = atoi(value);
         else if (_stricmp(key, "DiscordPresence") == 0) s->discordPresence = yes(value);
+        else if (_stricmp(key, "DreamcastModels") == 0) s->dcModels = yes(value);
+        else if (_stricmp(key, "ProtoAssets") == 0)     s->protoAssets = yes(value);
+        else if (_stricmp(key, "Parameters") == 0)      snprintf(s->parameters, sizeof(s->parameters), "%s", value);
     }
 
     fclose(f);
@@ -309,6 +350,9 @@ int port_settings_save(const PortSettings *s, const char *path)
     fprintf(f, "Logging=%s\n", s->logging ? "Yes" : "No");
     fprintf(f, "FPSLimit=%d\n", s->fpsLimit);
     fprintf(f, "DiscordPresence=%s\n", s->discordPresence ? "Yes" : "No");
+    fprintf(f, "DreamcastModels=%s\n", s->dcModels ? "Yes" : "No");
+    fprintf(f, "ProtoAssets=%s\n", s->protoAssets ? "Yes" : "No");
+    fprintf(f, "Parameters=%s\n", s->parameters);
 
     fprintf(f, "\n[Keys]\n");
 
@@ -329,6 +373,14 @@ int port_settings_save(const PortSettings *s, const char *path)
     for (i = 0; i < MOUSE_COUNT; i++)
     {
         fprintf(f, "%s=%s\n", port_mouse_action_names[i], port_mouse_button_names[s->mouse[i]]);
+    }
+
+    fprintf(f, "\n[Joystick]\n");
+    fprintf(f, "Enabled=%s\n", s->joystick ? "Yes" : "No");
+
+    for (i = 0; i < BIND_COUNT; i++)
+    {
+        fprintf(f, "%s=%s\n", port_bind_names[i], s->joy[i]);
     }
 
     fclose(f);

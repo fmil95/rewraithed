@@ -404,7 +404,7 @@ file(GLOB_RECURSE PORT_SRCS CONFIGURE_DEPENDS "${PORT_DIR}/src/*.c" "${PORT_DIR}
 file(GLOB_RECURSE PORT_NATIVE_SRCS CONFIGURE_DEPENDS "${PORT_DIR}/src/native/*.c" "${PORT_DIR}/src/native/*.cpp")
 
 # port/shared: settings code the launcher uses as well (plain host code too)
-set(PORT_SHARED_SRCS "${PORT_DIR}/shared/settings.c")
+set(PORT_SHARED_SRCS "${PORT_DIR}/shared/settings.c" "${PORT_DIR}/shared/dc_disc.c" "${PORT_DIR}/shared/proto_disc.c")
 list(APPEND PORT_SRCS ${PORT_SHARED_SRCS})
 list(APPEND PORT_NATIVE_SRCS ${PORT_SHARED_SRCS})
 

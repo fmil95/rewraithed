@@ -37,6 +37,7 @@ extern int g_cfg_bilinearFiltering;
 extern int g_port_pgxp;     /* port/psycross: PGXP */
 extern int g_port_alt_keys[BIND_COUNT];     /* port/psycross: input */
 extern int g_port_mouse[MOUSE_COUNT];
+extern int g_port_joystick;                 /* PsyX_pad.cpp (fixup) */
 extern PsyXKeyboardMapping g_cfg_keyboardMapping;
 
 /* rewraithed.ini, as edited by the launcher */
@@ -199,6 +200,27 @@ static void port_apply_keys(void)
     {
         g_port_mouse[i] = port_settings.mouse[i];
     }
+
+    /* the joystick (an SDL game controller), PsyCross's pad: the controller
+     * button of each PSX button; off, the controller is not read */
+    {
+        int *const gc[BIND_COUNT] = {
+            &g_cfg_controllerMapping.gc_dpad_up, &g_cfg_controllerMapping.gc_dpad_down,
+            &g_cfg_controllerMapping.gc_dpad_left, &g_cfg_controllerMapping.gc_dpad_right,
+            &g_cfg_controllerMapping.gc_cross, &g_cfg_controllerMapping.gc_circle,
+            &g_cfg_controllerMapping.gc_square, &g_cfg_controllerMapping.gc_triangle,
+            &g_cfg_controllerMapping.gc_l1, &g_cfg_controllerMapping.gc_l2,
+            &g_cfg_controllerMapping.gc_r1, &g_cfg_controllerMapping.gc_r2,
+            &g_cfg_controllerMapping.gc_select, &g_cfg_controllerMapping.gc_start,
+        };
+
+        for (i = 0; i < BIND_COUNT; i++)
+        {
+            *gc[i] = PsyX_LookupGameControllerMapping(port_settings.joy[i], *gc[i]);
+        }
+
+        g_port_joystick = port_settings.joystick;
+    }
 }
 
 int main(int argc, char **argv)
@@ -216,6 +238,65 @@ int main(int argc, char **argv)
         port_settings_defaults(&port_settings);
         port_settings_path(path, sizeof(path));
         port_settings_load(&port_settings, (port_arg("-ini") != NULL) ? port_arg("-ini") : path);
+    }
+
+    /* the launcher's Parameters: options as if typed after the real ones
+     * (space separated, "quoted" when they hold spaces) */
+    if (port_settings.parameters[0] != '\0')
+    {
+        static char text[sizeof(port_settings.parameters)];
+        static char *args[64];
+        char *p = text;
+        int n = 0;
+        int i;
+
+        SDL_strlcpy(text, port_settings.parameters, sizeof(text));
+
+        for (i = 0; (i < argc) && (n < 63); i++)
+        {
+            args[n++] = argv[i];
+        }
+
+        while ((*p != '\0') && (n < 63))
+        {
+            while ((*p == ' ') || (*p == '\t'))
+            {
+                p++;
+            }
+
+            if (*p == '\0')
+            {
+                break;
+            }
+
+            if (*p == '"')
+            {
+                args[n++] = ++p;
+
+                while ((*p != '\0') && (*p != '"'))
+                {
+                    p++;
+                }
+            }
+            else
+            {
+                args[n++] = p;
+
+                while ((*p != '\0') && (*p != ' ') && (*p != '\t'))
+                {
+                    p++;
+                }
+            }
+
+            if (*p != '\0')
+            {
+                *p++ = '\0';
+            }
+        }
+
+        args[n] = NULL;
+        port_argc = argc = n;
+        port_argv = argv = args;
     }
 
     if (port_settings.logging || port_has_flag("-log"))

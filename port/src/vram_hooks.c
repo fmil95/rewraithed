@@ -1,5 +1,6 @@
 /*
- * -vramlog: log how object textures are placed in video memory.
+ * -vramlog (or Enable Logging in the launcher): log how object textures are
+ * placed in video memory.
  * (Original definitions renamed to <name>_psx through port/overrides.txt.)
  *
  * Each object type gets one block in the object area (x 512..1023,
@@ -21,6 +22,7 @@
 #include "common.h"
 #include "Game/VRAM.h"
 #include "Game/STREAM.h"
+#include "settings.h"
 
 int port_has_flag(const char *name);
 
@@ -45,7 +47,8 @@ static int vram_log_enabled(void)
     {
         enabled = 0;
 
-        if (port_has_flag("-vramlog"))
+        /* -vramlog, or the launcher's Enable Logging */
+        if (port_has_flag("-vramlog") || port_settings.logging)
         {
             base = SDL_GetBasePath();
             SDL_snprintf(path, sizeof(path), "%svram.log", (base != NULL) ? base : "");

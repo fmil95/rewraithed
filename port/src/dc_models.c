@@ -2,9 +2,11 @@
  * Raziel's and Kain's models from the Dreamcast version, drawn with their
  * own 256 x 256 textures.
  *
- * tools/dc_import.py writes, into a "dreamcast" folder next to the game,
- * the two Dreamcast object files (raziel.pcm, kain.pcm) and the textures
- * they use (texNNNN.vq). When the game has loaded one of these objects
+ * With "Use DC models" on (DreamcastModels in rewraithed.ini), they are read
+ * from the user's Dreamcast disc, a GDI dump in the "dreamcast" folder next
+ * to the game (port/shared/dc_disc.c): the two object files from its
+ * BIGFILE.DAT, the textures they use from TEXTURES.VQ. When the game has
+ * loaded one of these objects
  * (STREAM_LoadObjectReturn, through a fixup), its model is replaced by the
  * Dreamcast one, which has the same skeleton (segments), so the game's own
  * animations drive it.
@@ -23,14 +25,25 @@
  */
 #include "common.h"
 #include "port/memory_map.h"
-
+#include "settings.h"
+#include "dc_disc.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-void port_exe_folder(char *out, size_t size);   /* native/disc_folder_win32.c */
+/* bigfile hashes of the two objects on the Dreamcast disc (its names do not
+ * hash as the game's do), and the name each object file carries */
+static const struct
+{
+    const char *name;
+    unsigned long hash;
+    const char *tag;
+} dc_objects[] = {
+    { "raziel", 0x90850620, "raziel__" },
+    { "kain", 0x797909D0, "kain____" },
+};
 
 /* port/psycross/psyx_port.cpp */
 void PsyX_PortSetExtTexture(int slot, const unsigned char *rgba, int width, int height);
@@ -68,39 +81,34 @@ int port_dc_is_external_model(Model *model)
     return 0;
 }
 
-static void dc_path(char *out, size_t size, const char *file)
+/* the Dreamcast disc, opened the first time a model is wanted */
+static DcDisc *dc_disc;
+static int dc_disc_tried;
+
+static DcDisc *dc_open_disc(void)
 {
-    char exe[512];
+    char gdi[600];
+    char problem[700];
 
-    port_exe_folder(exe, sizeof(exe));
-    snprintf(out, size, "%s\\dreamcast\\%s", exe, file);
-}
-
-static unsigned char *read_file(const char *path, long *size)
-{
-    FILE *f = fopen(path, "rb");
-    unsigned char *data;
-
-    if (f == NULL)
+    if (!dc_disc_tried)
     {
-        return NULL;
+        dc_disc_tried = 1;
+
+        if (!dc_disc_locate(gdi, sizeof(gdi), problem, sizeof(problem)))
+        {
+            printf("[rewraithed] Dreamcast models: %s\n", problem);
+        }
+        else if ((dc_disc = dc_disc_open(gdi)) == NULL)
+        {
+            printf("[rewraithed] Dreamcast models: %s is not a readable Soul Reaver disc\n", gdi);
+        }
+        else
+        {
+            printf("[rewraithed] Dreamcast models from %s\n", gdi);
+        }
     }
 
-    fseek(f, 0, SEEK_END);
-    *size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-
-    data = (unsigned char *)malloc(*size);
-
-    if ((data != NULL) && (fread(data, 1, *size, f) != (size_t)*size))
-    {
-        free(data);
-        data = NULL;
-    }
-
-    fclose(f);
-
-    return data;
+    return dc_disc;
 }
 
 /* Morton order, x in the even bits and y in the odd: the order of the
@@ -155,11 +163,8 @@ static void decode_vq(const unsigned char *slot, unsigned char *rgba)
  * -1 if it cannot be loaded */
 static int dc_texture_slot(int id)
 {
-    char file[32];
-    char path[600];
     unsigned char *slot;
     unsigned char *rgba;
-    long size;
     int i;
 
     for (i = 0; i < dc_texture_count; i++)
@@ -175,13 +180,11 @@ static int dc_texture_slot(int id)
         return -1;
     }
 
-    snprintf(file, sizeof(file), "tex%04d.vq", id);
-    dc_path(path, sizeof(path), file);
-    slot = read_file(path, &size);
+    slot = (unsigned char *)malloc(DC_TEXTURE_SLOT);
 
-    if ((slot == NULL) || (size < DC_TEXTURE_SLOT))
+    if ((slot == NULL) || (dc_open_disc() == NULL) || !dc_disc_read_textures(dc_disc, (long)id * DC_TEXTURE_SLOT, DC_TEXTURE_SLOT, slot))
     {
-        printf("[rewraithed] Dreamcast texture %s missing\n", file);
+        printf("[rewraithed] Dreamcast texture %d missing\n", id);
         free(slot);
         return -1;
     }
@@ -369,10 +372,24 @@ static void dc_double_sided_faces(Model *model, const char *name)
     free(twoSided);
 }
 
+static int dc_contains(const unsigned char *data, long size, const char *text)
+{
+    long n = (long)strlen(text);
+    long i;
+
+    for (i = 0; i + n <= size; i++)
+    {
+        if (memcmp(data + i, text, n) == 0)
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static Model *dc_load_model(const char *name)
 {
-    char file[32];
-    char path[600];
     unsigned char *raw;
     unsigned char *data;
     unsigned char *converted;
@@ -383,9 +400,29 @@ static Model *dc_load_model(const char *name)
     long table;
     long i;
 
-    snprintf(file, sizeof(file), "%s.pcm", name);
-    dc_path(path, sizeof(path), file);
-    raw = read_file(path, &size);
+    raw = NULL;
+
+    if (dc_open_disc() == NULL)
+    {
+        return NULL;
+    }
+
+    for (i = 0; i < (long)(sizeof(dc_objects) / sizeof(dc_objects[0])); i++)
+    {
+        if (_stricmp(dc_objects[i].name, name) == 0)
+        {
+            raw = dc_disc_read_bigfile(dc_disc, dc_objects[i].hash, &size);
+
+            /* the object's own name inside: another release of the disc
+             * may have other files at that hash */
+            if ((raw != NULL) && !dc_contains(raw, size, dc_objects[i].tag))
+            {
+                printf("[rewraithed] Dreamcast %s: not found on this disc\n", name);
+                free(raw);
+                raw = NULL;
+            }
+        }
+    }
 
     if (raw == NULL)
     {
@@ -481,7 +518,14 @@ void port_dc_object_loaded(char *name, Object *object)
     Model *psx;
     int i;
 
-    if ((strcmp(name, "raziel") != 0) && (strcmp(name, "kain") != 0))
+    /* a level's object list may spell the name in either case (the game
+     * compares object names with strcmpi) */
+    if ((_stricmp(name, "raziel") != 0) && (_stricmp(name, "kain") != 0))
+    {
+        return;
+    }
+
+    if (!port_settings.dcModels)
     {
         return;
     }
@@ -493,7 +537,7 @@ void port_dc_object_loaded(char *name, Object *object)
 
     for (i = 0; i < dc_model_count; i++)
     {
-        if (strcmp(dc_models[i].name, name) == 0)
+        if (_stricmp(dc_models[i].name, name) == 0)
         {
             dc = &dc_models[i];
         }

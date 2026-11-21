@@ -86,25 +86,36 @@ static void read_units_txt(const char *disk_path)
     fclose(f);
 }
 
+/* A file the port makes rather than reads from the mods folder (the
+ * prototype assets): served as a mods file. */
+static void add_mod_data(const char *game_path, const unsigned char *bytes, long size, const char *from);
+
+static int have_mod_file(const char *game_path)
+{
+    int i;
+
+    for (i = 0; i < mod_count; i++)
+    {
+        if (_stricmp(mod_files[i].path, game_path) == 0)
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static void add_mod_file(const char *game_path, const char *disk_path, void *ctx)
 {
-    ModFile *m;
+    unsigned char *bytes;
     FILE *f;
     long size;
-    unsigned long sum;
-    long i;
 
     (void)ctx;
 
     if (_stricmp(game_path, "\\units.txt") == 0)
     {
         read_units_txt(disk_path);
-        return;
-    }
-
-    if (mod_count >= MAX_MOD_FILES)
-    {
-        fprintf(stderr, "[rewraithed] mods: more than %d files, ignoring %s\n", MAX_MOD_FILES, disk_path);
         return;
     }
 
@@ -120,6 +131,34 @@ static void add_mod_file(const char *game_path, const char *disk_path, void *ctx
     size = ftell(f);
     fseek(f, 0, SEEK_SET);
 
+    bytes = (unsigned char *)malloc((size_t)(size > 0 ? size : 1));
+
+    if ((bytes == NULL) || (fread(bytes, 1, (size_t)size, f) != (size_t)size))
+    {
+        fprintf(stderr, "[rewraithed] mods: cannot read %s\n", disk_path);
+        fclose(f);
+        free(bytes);
+        return;
+    }
+
+    fclose(f);
+
+    add_mod_data(game_path, bytes, size, disk_path);
+    free(bytes);
+}
+
+static void add_mod_data(const char *game_path, const unsigned char *bytes, long size, const char *from)
+{
+    ModFile *m;
+    unsigned long sum;
+    long i;
+
+    if (mod_count >= MAX_MOD_FILES)
+    {
+        fprintf(stderr, "[rewraithed] mods: more than %d files, ignoring %s\n", MAX_MOD_FILES, from);
+        return;
+    }
+
     m = &mod_files[mod_count];
     memset(m, 0, sizeof(*m));
     snprintf(m->path, sizeof(m->path), "%s", game_path);
@@ -129,15 +168,13 @@ static void add_mod_file(const char *game_path, const char *disk_path, void *ctx
     m->sectors = (m->length + SECTOR_DATA - 1) / SECTOR_DATA;
     m->data = calloc((size_t)(m->sectors > 0 ? m->sectors : 1), SECTOR_DATA);
 
-    if ((m->data == NULL) || (fread(m->data, 1, (size_t)size, f) != (size_t)size))
+    if (m->data == NULL)
     {
-        fprintf(stderr, "[rewraithed] mods: cannot read %s\n", disk_path);
-        fclose(f);
-        free(m->data);
+        fprintf(stderr, "[rewraithed] mods: no memory for %s\n", from);
         return;
     }
 
-    fclose(f);
+    memcpy(m->data, bytes, (size_t)size);
 
     for (sum = 0, i = 0; i < m->length; i += 4)
     {
@@ -153,7 +190,7 @@ static void add_mod_file(const char *game_path, const char *disk_path, void *ctx
     m->entry.checkSumFull = (long)sum;
     /* filePos is relative to BIGFILE.DAT, set once its position is known */
 
-    printf("[rewraithed] mods: %s replaces %s (%ld bytes)\n", disk_path, m->path, size);
+    printf("[rewraithed] mods: %s replaces %s (%ld bytes)\n", from, m->path, size);
 
     mod_count++;
 }
@@ -347,6 +384,129 @@ static void build_unit_directories(void)
     }
 }
 
+/* --- prototype assets ("Use Proto Assets", ProtoAssets in rewraithed.ini) ---
+ * The Spirit Glyph's icon (-uncut, uncut_spirit.c) is drawn from the eighth
+ * cell of the glyph icon sheet, an unused swirl on the July disc. With the
+ * April 14, 1999 prototype's disc in the proto folder (port/shared/
+ * proto_disc.c), that cell and its palette are replaced by the Spirit
+ * Glyph's icon from April's sheet (its fifth cell), and the sheet is served
+ * as a mods file. A glphicon.crm in the mods folder comes first. The same
+ * as tools/uncut_spirit_icon.py. */
+#include "settings.h"
+#include "proto_disc.h"
+
+#define ICON_SHEET          "\\kain2\\object\\glphicon\\glphicon.crm"
+#define ICON_SHEET_SIZE     8228
+#define ICON_HEADER         36      /* file header and the image block's */
+#define ICON_ROW            32      /* 64 4-bit texels, or a 16-colour palette */
+#define ICON_CELL_ROWS      31
+#define ICON_JULY_SWIRL     7
+#define ICON_APRIL_SPIRIT   4
+
+/* a file of the July disc's BIGFILE.DAT by hash, before the loader has read
+ * its directories: every directory is searched */
+static unsigned char *read_july_file(long hash, long *size)
+{
+    unsigned char word[4];
+    unsigned char *dirs;
+    long num_dirs, d;
+
+    if (!read_bigfile(0, word, 4) || ((num_dirs = get32(word)) <= 0) || (num_dirs > 4096))
+    {
+        return NULL;
+    }
+
+    dirs = (unsigned char *)malloc(num_dirs * 8);
+
+    if ((dirs == NULL) || !read_bigfile(4, dirs, num_dirs * 8))
+    {
+        free(dirs);
+        return NULL;
+    }
+
+    for (d = 0; d < num_dirs; d++)
+    {
+        long offset = get32(dirs + d * 8 + 4);
+        long num_files, i;
+        unsigned char entry[16];
+
+        if (!read_bigfile(offset, word, 4) || ((num_files = get32(word)) <= 0) || (num_files > 65536))
+        {
+            continue;
+        }
+
+        for (i = 0; i < num_files; i++)
+        {
+            if (read_bigfile(offset + 4 + i * 16, entry, 16) && (get32(entry) == hash))
+            {
+                unsigned char *data = (unsigned char *)malloc(get32(entry + 4));
+
+                if ((data != NULL) && read_bigfile(get32(entry + 8), data, get32(entry + 4)))
+                {
+                    *size = get32(entry + 4);
+                    free(dirs);
+                    return data;
+                }
+
+                free(data);
+                free(dirs);
+                return NULL;
+            }
+        }
+    }
+
+    free(dirs);
+    return NULL;
+}
+
+static int icon_sheet_ok(const unsigned char *sheet, long size)
+{
+    return (sheet != NULL) && (size == ICON_SHEET_SIZE) &&
+           ((sheet[ICON_HEADER - 8] | (sheet[ICON_HEADER - 7] << 8)) == 16) &&
+           ((sheet[ICON_HEADER - 4] | (sheet[ICON_HEADER - 3] << 8)) == 256);
+}
+
+static void add_proto_assets(void)
+{
+    char image[600];
+    char problem[700];
+    unsigned char *july;
+    unsigned char *april;
+    long julySize = 0;
+    long aprilSize = 0;
+
+    if (!port_settings.protoAssets || have_mod_file(ICON_SHEET))
+    {
+        return;
+    }
+
+    if (!proto_disc_locate(image, sizeof(image), problem, sizeof(problem)))
+    {
+        printf("[rewraithed] prototype assets: %s\n", problem);
+        return;
+    }
+
+    july = read_july_file(LOAD_HashName(ICON_SHEET), &julySize);
+    april = proto_disc_read(image, ICON_SHEET, &aprilSize);
+
+    if (icon_sheet_ok(july, julySize) && icon_sheet_ok(april, aprilSize))
+    {
+        memcpy(july + ICON_HEADER + ICON_JULY_SWIRL * ICON_CELL_ROWS * ICON_ROW,
+            april + ICON_HEADER + ICON_APRIL_SPIRIT * ICON_CELL_ROWS * ICON_ROW, ICON_CELL_ROWS * ICON_ROW);
+        memcpy(july + ICON_HEADER + (255 - ICON_JULY_SWIRL) * ICON_ROW,
+            april + ICON_HEADER + (255 - ICON_APRIL_SPIRIT) * ICON_ROW, ICON_ROW);
+
+        add_mod_data(ICON_SHEET, july, julySize, "the Spirit Glyph icon from the April prototype");
+    }
+    else
+    {
+        printf("[rewraithed] prototype assets: the glyph icon sheets are not as expected\n");
+    }
+
+    free(july);
+    free(april);
+}
+
 /* For the CD drive: puts the patched directory table into the bigfile's first sectors. */
 void port_mod_patch_sector(int lba, unsigned char *data)
 {
@@ -373,6 +533,7 @@ void LOAD_InitCdLoader(char *bigFileName, char *voiceFileName)
         mod_next_lba = port_cd_image_sectors() + 1000;
 
         port_scan_mods_folder(add_mod_file, NULL);
+        add_proto_assets();
 
         for (i = 0; i < mod_count; i++)
         {

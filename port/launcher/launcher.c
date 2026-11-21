@@ -12,8 +12,11 @@
 #include <string.h>
 
 #include "settings.h"
+#include "dc_disc.h"
+#include "proto_disc.h"
 #include "areas.h"
 #include "controls.h"
+#include "joystick.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
@@ -23,8 +26,8 @@ enum
     ID_VSYNC_YES, ID_VSYNC_NO, ID_PILLAR_YES, ID_PILLAR_NO, ID_PGXP_YES, ID_PGXP_NO,
     ID_FILTERING, ID_AA, ID_AREA,
     ID_SKIP, ID_DITHER, ID_PRELOAD_YES, ID_PRELOAD_NO, ID_DEBUG_YES, ID_DEBUG_NO,
-    ID_LOG_YES, ID_LOG_NO, ID_DISCORD_YES, ID_DISCORD_NO, ID_FPS, ID_CONTROLS,
-    ID_PLAY, ID_SAVE, ID_EXIT,
+    ID_LOG_YES, ID_LOG_NO, ID_DISCORD_YES, ID_DISCORD_NO, ID_DC_YES, ID_DC_NO, ID_PROTO_YES, ID_PROTO_NO, ID_FPS, ID_CONTROLS, ID_JOYSTICK,
+    ID_PARAMS, ID_PLAY, ID_SAVE,
 };
 
 typedef struct { int w, h; } Resolution;
@@ -154,12 +157,51 @@ static void combo_row(HWND parent, const wchar_t *text, int x, int y, int lw, in
     option_tip(parent, lbl, id, 0, tip);
 }
 
-static void yes_no_row(HWND parent, const wchar_t *text, int x, int y, int lw, int cx, int idYes, const wchar_t *tip)
+static HWND yes_no_row(HWND parent, const wchar_t *text, int x, int y, int lw, int cx, int idYes, const wchar_t *tip)
 {
     HWND lbl = label(parent, text, x, y, lw);
 
     yes_no(parent, cx, y, idYes);
     option_tip(parent, lbl, idYes, idYes + 1, tip);
+
+    return lbl;
+}
+
+/* the width, in 96-dpi units, the Area list needs for its longest name */
+static int area_list_width(HWND parent)
+{
+    HDC dc = GetDC(parent);
+    HFONT old = (HFONT)SelectObject(dc, ui_font);
+    int widest = 0;
+    int i;
+
+    for (i = -1; i < COUNT(launcher_areas); i++)
+    {
+        wchar_t text[64];
+        SIZE size;
+
+        if (i < 0)
+        {
+            wcscpy(text, L"Default (from the disc)");
+        }
+        else
+        {
+            MultiByteToWideChar(CP_UTF8, 0, launcher_areas[i].label, -1, text, 64);
+        }
+
+        GetTextExtentPoint32W(dc, text, (int)wcslen(text), &size);
+
+        if (size.cx > widest)
+        {
+            widest = size.cx;
+        }
+    }
+
+    SelectObject(dc, old);
+    ReleaseDC(parent, dc);
+
+    /* the text, the arrow button and the borders */
+    return MulDiv(widest + GetSystemMetrics(SM_CXVSCROLL), 96, dpi) + 14;
 }
 
 static void build_ui(HWND hwnd)
@@ -172,7 +214,7 @@ static void build_ui(HWND hwnd)
     control(hwnd, L"STATIC", L"Version " REWRAITHED_VERSION, SS_RIGHT | WS_DISABLED, 440, 4, 200, 16, 0);
 
     /* --- left: video --- */
-    control(hwnd, L"BUTTON", L"Video", BS_GROUPBOX, 12, 18, 300, 362, 0);
+    control(hwnd, L"BUTTON", L"Video", BS_GROUPBOX, 12, 18, 300, 398, 0);
 
     y = 42;
     combo_row(hwnd, L"Display", 24, y, 96, 124, 176, ID_DISPLAY,
@@ -206,7 +248,7 @@ static void build_ui(HWND hwnd)
         L"Smooths the jagged edges of polygons. Higher values look smoother but need a faster graphics card.");
 
     /* --- right: game --- */
-    control(hwnd, L"BUTTON", L"Game", BS_GROUPBOX, 324, 18, 316, 362, 0);
+    control(hwnd, L"BUTTON", L"Game", BS_GROUPBOX, 324, 18, 316, 398, 0);
 
     y = 42;
     combo_row(hwnd, L"Skip Intros", 336, y, 120, 460, 168, ID_SKIP,
@@ -216,15 +258,12 @@ static void build_ui(HWND hwnd)
     combo_row(hwnd, L"Dithering", 336, y, 120, 460, 168, ID_DITHER,
         L"The PlayStation's dot pattern that hides color banding. Off gives smoother colors, On looks like the original.");
     y += 36;
-    yes_no_row(hwnd, L"Preload Areas", 336, y, 120, 460, ID_PRELOAD_YES,
-        L"Loads the areas next to the one you are in right away, instead of in the background while you play.");
-    y += 36;
     yes_no_row(hwnd, L"Enable Debug Menu", 336, y, 120, 460, ID_DEBUG_YES,
         L"Opens the game's debug menu. In game, press Backspace, or Attack and Feed at the same time.");
     y += 36;
     yes_no_row(hwnd, L"Enable Logging", 336, y, 120, 460, ID_LOG_YES,
-        L"Writes what the game does to rewraithed.log next to the game, including the details of a crash. "
-        L"Useful when reporting problems.");
+        L"Writes what the game does to rewraithed.log next to the game, including the details of a crash, "
+        L"and how textures are placed in video memory to vram.log. Useful when reporting problems.");
     y += 36;
     yes_no_row(hwnd, L"Discord Rich Presence", 336, y, 120, 460, ID_DISCORD_YES,
         L"Shows on your Discord profile that you are playing Rewraithed, with the area you are in and the realm. "
@@ -232,19 +271,45 @@ static void build_ui(HWND hwnd)
     y += 36;
     combo_row(hwnd, L"FPS Limit", 336, y, 120, 460, 168, ID_FPS,
         L"How many frames a second the game runs at. 30 is the original rate of the game, 60 is smoother.");
+    y += 36;
+    yes_no_row(hwnd, L"Use DC Models", 336, y, 120, 460, ID_DC_YES,
+        L"Draws Raziel and Kain with their more detailed models from the Dreamcast version. "
+        L"Needs your own dump of the Dreamcast disc (the .gdi file and its track files) "
+        L"in the dreamcast folder next to the game.");
+    y += 36;
+    yes_no_row(hwnd, L"Use Proto Assets", 336, y, 120, 460, ID_PROTO_YES,
+        L"Uses assets from the April 14, 1999 prototype that the July build lacks: the Spirit Glyph's own icon "
+        L"(with -uncut). Needs your own image of that prototype's disc in the proto folder next to the game.");
 
     /* last row of the box, just above the buttons */
     y = 344;
     lbl = label(hwnd, L"Controls", 336, y, 120);
     control(hwnd, L"BUTTON", L"Keyboard and Mouse", BS_PUSHBUTTON | WS_TABSTOP, 460, y, 168, 26, ID_CONTROLS);
+    control(hwnd, L"BUTTON", L"Joystick", BS_PUSHBUTTON | WS_TABSTOP, 460, y + 36, 168, 26, ID_JOYSTICK);
+    tooltip(hwnd, GetDlgItem(hwnd, ID_JOYSTICK), L"Turn the joystick (a game controller) on or off, and choose its button for each action. The left stick also moves.");
     option_tip(hwnd, lbl, ID_CONTROLS, 0, L"Change the keys for each action, with an alternate key for each (the arrow keys also move), and the mouse buttons for attacking, telekinesis and aiming.");
 
-    /* --- bottom --- */
-    combo_row(hwnd, L"Area", 24, 395, 40, 68, 244, ID_AREA,
-        L"Starts the game straight in the chosen area. Default starts where the disc does.");
-    control(hwnd, L"BUTTON", L"Play", BS_DEFPUSHBUTTON | WS_TABSTOP, 372, 392, 84, 30, ID_PLAY);
-    control(hwnd, L"BUTTON", L"Save", BS_PUSHBUTTON | WS_TABSTOP, 464, 392, 84, 30, ID_SAVE);
-    control(hwnd, L"BUTTON", L"Exit", BS_PUSHBUTTON | WS_TABSTOP, 556, 392, 84, 30, ID_EXIT);
+    /* --- bottom: the Area list as wide as its longest name, then Parameters
+     * up to the buttons --- */
+    {
+        int areaWidth = area_list_width(hwnd);
+        int paramsX = 64 + areaWidth + 12;
+
+        combo_row(hwnd, L"Area", 24, 431, 36, 64, areaWidth, ID_AREA,
+            L"Starts the game straight in the chosen area. Default starts where the disc does.");
+
+        lbl = label(hwnd, L"Parameters", paramsX, 431, 64);
+        control(hwnd, L"EDIT", L"", ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP, paramsX + 66, 432, 496 - (paramsX + 66), 22, ID_PARAMS);
+        SendDlgItemMessageW(hwnd, ID_PARAMS, EM_SETLIMITTEXT, sizeof(settings.parameters) - 1, 0);
+        option_tip(hwnd, lbl, ID_PARAMS, 0,
+            L"Extra options for the game, as on its command line, separated by spaces. For example: "
+            L"-uncut restores content cut from the game, -material starts in the material realm, "
+            L"-skipcutscene skips the cutscenes.");
+    }
+
+    /* no Exit button: the window's close button does that */
+    control(hwnd, L"BUTTON", L"Play", BS_DEFPUSHBUTTON | WS_TABSTOP, 504, 428, 64, 30, ID_PLAY);
+    control(hwnd, L"BUTTON", L"Save", BS_PUSHBUTTON | WS_TABSTOP, 576, 428, 64, 30, ID_SAVE);
 
     /* --- lists --- */
     for (i = 0; i < COUNT(display_order); i++)
@@ -359,10 +424,22 @@ static void show_settings(void)
     combo_set(ID_AREA, sel);
     combo_set(ID_SKIP, settings.skipIntros);
     combo_set(ID_DITHER, settings.dithering ? 1 : 0);
-    yes_no_set(ID_PRELOAD_YES, settings.preloadChunks);
     yes_no_set(ID_DEBUG_YES, settings.debugMenu);
     yes_no_set(ID_LOG_YES, settings.logging);
     yes_no_set(ID_DISCORD_YES, settings.discordPresence);
+
+    /* only on while the Dreamcast disc is in the dreamcast folder */
+    yes_no_set(ID_DC_YES, settings.dcModels && dc_disc_locate(NULL, 0, NULL, 0));
+
+    /* only on while the April disc is in the proto folder */
+    yes_no_set(ID_PROTO_YES, settings.protoAssets && proto_disc_locate(NULL, 0, NULL, 0));
+
+    {
+        wchar_t params[256];
+
+        MultiByteToWideChar(CP_UTF8, 0, settings.parameters, -1, params, 256);
+        SetDlgItemTextW(main_window, ID_PARAMS, params);
+    }
 
     /* 30 or 60: higher limits and unlimited, from older versions, run at 60 */
     sel = ((settings.fpsLimit > 30) || (settings.fpsLimit <= 0)) ? 1 : 0;
@@ -393,11 +470,20 @@ static void read_settings(void)
 
     settings.skipIntros = combo_get(ID_SKIP);
     settings.dithering = combo_get(ID_DITHER) == 1;
-    settings.preloadChunks = yes_no_get(ID_PRELOAD_YES);
+    settings.preloadChunks = 0;
     settings.debugMenu = yes_no_get(ID_DEBUG_YES);
     settings.logging = yes_no_get(ID_LOG_YES);
     settings.discordPresence = yes_no_get(ID_DISCORD_YES);
+    settings.dcModels = yes_no_get(ID_DC_YES);
+    settings.protoAssets = yes_no_get(ID_PROTO_YES);
     settings.fpsLimit = fps_values[combo_get(ID_FPS)];
+
+    {
+        wchar_t params[256];
+
+        GetDlgItemTextW(main_window, ID_PARAMS, params, 256);
+        WideCharToMultiByte(CP_UTF8, 0, params, -1, settings.parameters, sizeof(settings.parameters), NULL, NULL);
+    }
 }
 
 static int save(void)
@@ -463,10 +549,65 @@ static LRESULT CALLBACK main_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
         switch (id)
         {
+        case ID_DC_YES:
+        {
+            char problem[700];
+            char folder[MAX_PATH];
+            wchar_t text[1200];
+
+            if (!dc_disc_locate(NULL, 0, problem, sizeof(problem)))
+            {
+                dc_disc_folder(folder, sizeof(folder));
+                CreateDirectoryA(folder, NULL);
+
+                swprintf(text, 1200,
+                    L"The Dreamcast models are read from your own copy of the Dreamcast version of Soul Reaver.\n\n"
+                    L"Place your dump of the disc, the .gdi file with all its track files, in this folder:\n\n%hs\n\n"
+                    L"then choose Yes again.\n\n(%hs)", folder, problem);
+                MessageBoxW(hwnd, text, L"Use DC Models", MB_ICONINFORMATION);
+                yes_no_set(ID_DC_YES, 0);
+                return 0;
+            }
+
+            yes_no_set(ID_DC_YES, 1);
+            return 0;
+        }
+        case ID_DC_NO:
+            yes_no_set(ID_DC_YES, 0);
+            return 0;
+        case ID_PROTO_YES:
+        {
+            char problem[700];
+            char folder[MAX_PATH];
+            wchar_t text[1200];
+            HCURSOR old = SetCursor(LoadCursor(NULL, IDC_WAIT));
+            int found = proto_disc_locate(NULL, 0, problem, sizeof(problem));
+
+            SetCursor(old);
+
+            if (!found)
+            {
+                proto_disc_folder(folder, sizeof(folder));
+                CreateDirectoryA(folder, NULL);
+
+                swprintf(text, 1200,
+                    L"The prototype assets are read from your own copy of the April 14, 1999 prototype of Soul Reaver.\n\n"
+                    L"Place your image of its disc (the .cue and .bin, or the .bin alone) in this folder:\n\n%hs\n\n"
+                    L"then choose Yes again.\n\n(%hs)", folder, problem);
+                MessageBoxW(hwnd, text, L"Use Proto Assets", MB_ICONINFORMATION);
+                yes_no_set(ID_PROTO_YES, 0);
+                return 0;
+            }
+
+            yes_no_set(ID_PROTO_YES, 1);
+            return 0;
+        }
+        case ID_PROTO_NO:
+            yes_no_set(ID_PROTO_YES, 0);
+            return 0;
         case ID_VSYNC_YES: case ID_VSYNC_NO:
         case ID_PILLAR_YES: case ID_PILLAR_NO:
         case ID_PGXP_YES: case ID_PGXP_NO:
-        case ID_PRELOAD_YES: case ID_PRELOAD_NO:
         case ID_DEBUG_YES: case ID_DEBUG_NO:
         case ID_LOG_YES: case ID_LOG_NO:
         case ID_DISCORD_YES: case ID_DISCORD_NO:
@@ -485,6 +626,9 @@ static LRESULT CALLBACK main_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         case ID_CONTROLS:
             controls_dialog(hwnd, &settings, ui_font, dpi);
             return 0;
+        case ID_JOYSTICK:
+            joystick_dialog(hwnd, &settings, ui_font, dpi);
+            return 0;
         case ID_PLAY:
             if (play())
             {
@@ -493,9 +637,6 @@ static LRESULT CALLBACK main_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             return 0;
         case ID_SAVE:
             save();
-            return 0;
-        case ID_EXIT:
-            DestroyWindow(hwnd);
             return 0;
         }
 
@@ -547,7 +688,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR cmd, int show)
     r.left = 0;
     r.top = 0;
     r.right = S(652);
-    r.bottom = S(434);
+    r.bottom = S(470);
     AdjustWindowRect(&r, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE);
 
     main_window = CreateWindowW(L"RewraithedLauncher", L"Rewraithed Launcher",

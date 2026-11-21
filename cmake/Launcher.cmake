@@ -8,7 +8,10 @@ endif()
 add_executable(rewraithed-launcher WIN32
     "${PORT_DIR}/launcher/launcher.c"
     "${PORT_DIR}/launcher/controls.c"
+    "${PORT_DIR}/launcher/joystick.c"
     "${PORT_DIR}/shared/settings.c"
+    "${PORT_DIR}/shared/dc_disc.c"
+    "${PORT_DIR}/shared/proto_disc.c"
 )
 
 target_include_directories(rewraithed-launcher PRIVATE "${PORT_DIR}/shared" "${PORT_DIR}/launcher")
