@@ -278,22 +278,111 @@ static int dc_vertex_segment(Model *model, int vertex)
     return -1;
 }
 
-/* Every face is drawn from both sides. The Dreamcast's own renderer draws
- * these models without culling, and they were made for it: some faces are
- * wound the wrong way round (the back of Raziel's right calf), others have
- * flag 0x10 (drawn from both sides there, skipped outright by the PSX
- * drawing code), and those joining two segments fold over where a joint
- * bends. The PSX drawing code culls faces that turn their back to the
- * camera, and holes opened. Each face becomes itself plus a copy wound the
- * other way round with its UVs to match, so that one of the two always
- * faces the camera. The face list is rebuilt, twice as long, in the port
- * data area (the primitive pools are larger to match, GAMELOOP.c fixups). */
+/* Faces drawn from both sides. The Dreamcast's own renderer draws these
+ * models without culling, and they were made for it; the PSX drawing code
+ * culls faces that turn their back to the camera, and holes opened:
+ *  - faces with flag 0x10 (drawn from both sides there, skipped outright by
+ *    the PSX drawing code);
+ *  - faces joining two segments, which fold over where a joint bends;
+ *  - the legs' faces (segments 6 to 13): the back of Raziel's right calf
+ *    opened with the others two-sided.
+ * Not the rest: the body under the cloak is modelled beneath it, and drawn
+ * from both sides its inner side showed through around the neck.
+ * Each becomes itself plus a copy wound the other way round with its UVs to
+ * match, so that one of the two always faces the camera. The face list is
+ * rebuilt, larger, in the port data area (the primitive pools are larger to
+ * match, GAMELOOP.c fixups). */
+#define DC_LEG_FIRST 6
+#define DC_LEG_LAST  13
+
 static int dc_two_sided(Model *model, MFace *face)
 {
-    (void)model;
-    (void)face;
+    int s0;
+    int s1;
+    int s2;
 
-    return 1;
+    if (face->flags & 0x10)
+    {
+        return 1;
+    }
+
+    s0 = dc_vertex_segment(model, face->face.v0);
+    s1 = dc_vertex_segment(model, face->face.v1);
+    s2 = dc_vertex_segment(model, face->face.v2);
+
+    if ((s1 != s0) || (s2 != s0))
+    {
+        return 1;
+    }
+
+    return (s0 >= DC_LEG_FIRST) && (s0 <= DC_LEG_LAST);
+}
+
+/* Raziel's scarf and collar (segments 21 to 27, around his neck) are drawn a
+ * little after what lies under them. The Dreamcast draws with a depth
+ * buffer, so the chest and shoulders modelled just beneath them never show;
+ * the PSX drawing code sorts whole triangles by their average depth, and
+ * bits of those bones came through the collar. A face's texture record
+ * carries a sort push (TextureMT3.sortPush, eight ordering table steps
+ * each): these faces get their own copy of their record with a push towards
+ * the camera. */
+#define DC_COLLAR_FIRST 21
+#define DC_COLLAR_LAST  27
+#define DC_COLLAR_PUSH  (-3)
+
+static int dc_in_collar(Model *model, int vertex)
+{
+    int s = dc_vertex_segment(model, vertex);
+
+    return (s >= DC_COLLAR_FIRST) && (s <= DC_COLLAR_LAST);
+}
+
+static void dc_push_collar(Model *model, const char *name)
+{
+    TextureMT3 *copies;
+    long count = 0;
+    long n = 0;
+    long i;
+
+    if ((_stricmp(name, "raziel") != 0) || (model->numSegments <= DC_COLLAR_LAST))
+    {
+        return;
+    }
+
+    for (i = 0; i < model->numFaces; i++)
+    {
+        MFace *face = &model->faceList[i];
+
+        if ((face->flags & 0x2) && (dc_in_collar(model, face->face.v0) || dc_in_collar(model, face->face.v1) || dc_in_collar(model, face->face.v2)))
+        {
+            count++;
+        }
+    }
+
+    if (count == 0)
+    {
+        return;
+    }
+
+    copies = (TextureMT3 *)port_extra_alloc(count * sizeof(TextureMT3));
+
+    if (copies == NULL)
+    {
+        return;
+    }
+
+    for (i = 0; i < model->numFaces; i++)
+    {
+        MFace *face = &model->faceList[i];
+
+        if ((face->flags & 0x2) && (dc_in_collar(model, face->face.v0) || dc_in_collar(model, face->face.v1) || dc_in_collar(model, face->face.v2)))
+        {
+            copies[n] = *(TextureMT3 *)face->color;
+            copies[n].sortPush = DC_COLLAR_PUSH;
+            face->color = (long)(intptr_t)&copies[n];
+            n++;
+        }
+    }
 }
 
 static void dc_double_sided_faces(Model *model, const char *name)
@@ -509,6 +598,16 @@ static Model *dc_load_model(const char *name)
 
     free(converted);
 
+    /* Lit from the vertex normals, as the PlayStation model's faces are (flag
+     * 0x1, smooth shading). Without it the drawing code lit each face flat
+     * from its face normal, a darker path; the Dreamcast vertex normals are
+     * the game's own normal table, as the PlayStation ones. */
+    for (i = 0; i < model->numFaces; i++)
+    {
+        model->faceList[i].flags |= 0x1;
+    }
+
+    dc_push_collar(model, name);
     dc_double_sided_faces(model, name);
 
     /* the rest of the object file (animations, scripts) stays unused */
