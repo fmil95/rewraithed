@@ -53,7 +53,7 @@ game_fixup(Game/GAMELOOP.c
 
 game_fixup(Game/GAMELOOP.c
     FIND    "    if (gameTracker->vblFrames <= (unsigned long)gameTracker->frameRateLock)\n    {\n        while (CheckVolatile(gameTracker->reqDisp) != 0)"
-    REPLACE "    port_frame_limit();\n\n    if (port_fps_locked() && (gameTracker->vblFrames <= (unsigned long)gameTracker->frameRateLock))\n    {\n        while (CheckVolatile(gameTracker->reqDisp) != 0)")
+    REPLACE "    port_frame_limit();\n\n    if (port_fps_locked() && !port_vsync_paced() && (gameTracker->vblFrames <= (unsigned long)gameTracker->frameRateLock))\n    {\n        while (CheckVolatile(gameTracker->reqDisp) != 0)")
 
 # Preload Chunks (launcher setting): the units next to the one entered are
 # loaded right away instead of in the background.
@@ -294,7 +294,7 @@ psycross_fixup(gpu/PsyX_GPU.cpp
 # overridable per draw, and dithering that can be switched off.
 psycross_fixup(render/PsyX_render.cpp
     FIND    "int g_cfg_bilinearFiltering = 0;\n"
-    REPLACE "int g_cfg_bilinearFiltering = 0;\nextern \"C\" {\nextern int g_cfg_dithering;\nvoid PsyX_PortSetView(void);\nvoid PsyX_PortScissor(float x, float y, float w, float h);\nvoid PsyX_PortClear(void);\nvoid PsyX_PortBeforeSwap(void);\nvoid PsyX_PortBlitFromWindow(int x, int y, int w, int h);\nint PsyX_PortTextureFilter(void);\n}\n")
+    REPLACE "int g_cfg_bilinearFiltering = 0;\nextern \"C\" {\nextern int g_cfg_dithering;\nvoid PsyX_PortSetView(void);\nvoid PsyX_PortScissor(float x, float y, float w, float h);\nvoid PsyX_PortClear(void);\nvoid PsyX_PortBeforeSwap(void);\nvoid PsyX_PortAfterSwap(void);\nvoid PsyX_PortBlitFromWindow(int x, int y, int w, int h);\nint PsyX_PortTextureFilter(void);\n}\n")
 
 # Frame readback into VRAM (pictures the game renders and reuses as
 # textures, e.g. a warp gate's view of its destination): the pixels come
@@ -347,7 +347,7 @@ psycross_fixup(PsyX_main.cpp
 
 psycross_fixup(render/PsyX_render.cpp
     FIND    "#if defined(RENDERER_OGL) || defined(RENDERER_OGLES)\n\tSDL_GL_SwapWindow(g_window);"
-    REPLACE "#if defined(RENDERER_OGL) || defined(RENDERER_OGLES)\n\tPsyX_PortBeforeSwap();\n\tSDL_GL_SwapWindow(g_window);")
+    REPLACE "#if defined(RENDERER_OGL) || defined(RENDERER_OGLES)\n\tPsyX_PortBeforeSwap();\n\tSDL_GL_SwapWindow(g_window);\n\tPsyX_PortAfterSwap();")
 
 # The background fill clears only the view, so the bars stay black.
 psycross_fixup(render/PsyX_render.cpp
@@ -724,3 +724,94 @@ game_fixup(Game/REAVER.c
 game_fixup(Game/MONSTER/MONMSG.c
     FIND    "        damage = 0;\n\n        switch (mv->damageType)\n        {\n        case 0x20:\n"
     REPLACE "        damage = 0;\n\n        extern int port_uncut_reaver_hit(Instance *instance, evMonsterHitData *data, int *fatal, int *damage);\n\n        switch (port_uncut_reaver_hit(instance, data, &fatal, &damage) ? -1 : mv->damageType)\n        {\n        case -1:\n            break;\n        case 0x20:\n")
+
+# Above 30 FPS, effects (torch fire, sparks, blood, glows, the glyph rings)
+# ran faster: their primitives age, fade and move once per frame drawn, the
+# particles give birth to new ones every frame. They now run in 30-per-
+# second ticks of the game clock (gameTrackerX.timeMult), each seen as one
+# PSX frame (timeMult 4096, FX_Frames 1), several after a long frame, none
+# when no tick is due; they are still drawn every frame. At 30 FPS nothing
+# changes.
+game_fixup(Game/FX.c
+    FIND    "void FX_ProcessList(FXTracker *fxTracker)\n{\n    FX_PRIM *fxPrim;\n"
+    REPLACE "static int port_fx_fixed_tick;\n\nstatic void FX_ProcessListOnce(FXTracker *fxTracker);\n\nvoid FX_ProcessList(FXTracker *fxTracker)\n{\n    extern int port_fps_locked(void);\n    unsigned long timeMult;\n    int ticks;\n\n    if (port_fps_locked())\n    {\n        FX_ProcessListOnce(fxTracker);\n        return;\n    }\n\n    FX_TimeCount += gameTrackerX.timeMult;\n\n    ticks = FX_TimeCount / 4096;\n\n    FX_TimeCount -= ticks << 12;\n\n    if (ticks > 4)\n    {\n        ticks = 4;\n    }\n\n    timeMult = gameTrackerX.timeMult;\n\n    gameTrackerX.timeMult = 4096;\n\n    port_fx_fixed_tick = 1;\n\n    while (ticks-- > 0)\n    {\n        FX_ProcessListOnce(fxTracker);\n    }\n\n    port_fx_fixed_tick = 0;\n\n    gameTrackerX.timeMult = timeMult;\n}\n\nstatic void FX_ProcessListOnce(FXTracker *fxTracker)\n{\n    FX_PRIM *fxPrim;\n")
+
+game_fixup(Game/FX.c
+    FIND    "    FX_TimeCount += gameTrackerX.timeMult;\n\n    FX_Frames = FX_TimeCount / 4096;\n\n    FX_TimeCount -= FX_Frames << 12;\n"
+    REPLACE "    if (port_fx_fixed_tick)\n    {\n        FX_Frames = 1;\n    }\n    else\n    {\n        FX_TimeCount += gameTrackerX.timeMult;\n\n        FX_Frames = FX_TimeCount / 4096;\n\n        FX_TimeCount -= FX_Frames << 12;\n    }\n")
+
+# ... and so did the spiral HUD: its shimmer, glow and changes of shape
+# stepped once per frame drawn. They step once per 30-per-second tick.
+game_fixup(Game/FX.c
+    FIND    "    SPIRAL_COLOR = 0x3AFCFFD3;\n"
+    REPLACE "    {\n        extern int port_hud_ticks(void);\n\n        port_spiral_ticks = port_hud_ticks();\n    }\n\n    SPIRAL_COLOR = 0x3AFCFFD3;\n")
+
+game_fixup(Game/FX.c
+    FIND    "++cnt > 80"
+    REPLACE "(cnt += port_spiral_ticks) > 80")
+
+game_fixup(Game/FX.c
+    FIND    "            deg = (deg - 32) & 0xFFF;\n"
+    REPLACE "            deg = (deg - (32 * port_spiral_ticks)) & 0xFFF;\n")
+
+game_fixup(Game/FX.c
+    FIND    "void FX_Health_Spiral(int number, int current_health, int max_health)\n{\n    int degchange;\n"
+    REPLACE "void FX_Health_Spiral(int number, int current_health, int max_health)\n{\n    int degchange;\n\n    if (port_spiral_ticks == 0)\n    {\n        Spiral_Current = current_health;\n\n        Spiral_Max = max_health;\n        return;\n    }\n")
+
+game_fixup(Game/FX.c
+    FIND    "static long Spiral_Max = 100000;\n"
+    REPLACE "static long Spiral_Max = 100000;\n\nstatic int port_spiral_ticks = 1;  /* the spiral's 30 Hz ticks this frame */\n")
+
+# ... and so did texture animations, which follow the frame count: the
+# water and other animated surfaces of the level, objects' animated textures
+# (the warp gates' faces), and the wobble of some particles. They follow a
+# frame count at 30 per second (port_frame30, gpu_hooks.c).
+game_fixup(Game/GAMELOOP.c
+    FIND    "    PIPE3D_AnimateTerrainTextures(terrain->aniList, gameTracker->frameCount, gameTracker->primPool, drawot);\n    PIPE3D_AnimateTerrainTextures(level->bgAniList, gameTracker->frameCount, gameTracker->primPool, drawot);\n"
+    REPLACE "    {\n        extern unsigned long port_frame30(void);\n\n        PIPE3D_AnimateTerrainTextures(terrain->aniList, port_frame30(), gameTracker->primPool, drawot);\n        PIPE3D_AnimateTerrainTextures(level->bgAniList, port_frame30(), gameTracker->primPool, drawot);\n    }\n")
+
+game_fixup(Game/PIPE3D.c
+    FIND    "                    PIPE3D_AnimateTextures(instance->object->modelList[instance->currentModel]->aniTextures, gameTrackerX.frameCount);\n"
+    REPLACE "                    {\n                        extern unsigned long port_frame30(void);\n\n                        PIPE3D_AnimateTextures(instance->object->modelList[instance->currentModel]->aniTextures, port_frame30());\n                    }\n")
+
+game_fixup(Game/FX.c
+    FIND    "rcos(gameTrackerX.frameCount * "
+    REPLACE "rcos(port_frame30() * ")
+
+game_fixup(Game/FX.c
+    FIND    "static int port_fx_fixed_tick;\n"
+    REPLACE "static int port_fx_fixed_tick;\n\nextern unsigned long port_frame30(void);\n")
+
+# PsyCross turned VSync off while Backspace was held (a debug key of its
+# own). Backspace opens the debug menu here, and with VSync pacing the
+# frames (port_setup_vsync_pacing) the game would run unthrottled.
+psycross_fixup(PsyX_main.cpp
+    FIND    "\tif (nKey == SDL_SCANCODE_BACKSPACE)\n\t{\n\t\tif (down)\n\t\t\tg_skipSwapInterval = 1;\n\t\telse\n\t\t\tg_skipSwapInterval = 0;\n\t}\n"
+    REPLACE "\t/* Backspace: the port's debug menu key, no longer VSync off */\n")
+
+# A window made at the desktop's size (borderless: a size of 0 x 0) takes
+# the size it was given.
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "\tg_window = SDL_CreateWindow(windowName, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, g_windowWidth, g_windowHeight, windowFlags);\n"
+    REPLACE "\tg_window = SDL_CreateWindow(windowName, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, g_windowWidth, g_windowHeight, windowFlags);\n\n\tif (g_window != NULL)\n\t\tSDL_GetWindowSize(g_window, &g_windowWidth, &g_windowHeight);\n")
+
+# ... and so did the levels' vertex animations (VM objects: rippling water,
+# pulsing lights and pads, under3's warp gate circles, train8's pool): each
+# steps its table once per call, once per frame. They step once per 30-per-
+# second tick of game time (port_game_ticks, gpu_hooks.c).
+game_fixup(Game/GAMELOOP.c
+    FIND    "                    for (d = 0; d < 16; d++)\n                    {\n                        if (StreamTracker.StreamList[d].used == 2)\n                        {\n                            VM_ProcessVMObjectList_S(StreamTracker.StreamList[d].level, &theCamera);\n                        }\n                    }\n"
+    REPLACE "                    {\n                        extern int port_game_ticks(long *accumulator);\n                        static long vmTicks;\n                        int ticks = port_game_ticks(&vmTicks);\n\n                        while (ticks-- > 0)\n                        {\n                            for (d = 0; d < 16; d++)\n                            {\n                                if (StreamTracker.StreamList[d].used == 2)\n                                {\n                                    VM_ProcessVMObjectList_S(StreamTracker.StreamList[d].level, &theCamera);\n                                }\n                            }\n                        }\n                    }\n")
+
+# ... and so did the plane shift: its morph moves 20 of 1000 per frame.
+game_fixup(Game/GAMELOOP.c
+    FIND    "                if (gameTracker->gameData.asmData.MorphTime < 1000)\n                {\n                    MORPH_Continue();\n                }\n"
+    REPLACE "                {\n                    extern int port_game_ticks(long *accumulator);\n                    static long morphTicks;\n                    int ticks = (gameTracker->gameData.asmData.MorphTime < 1000) ? port_game_ticks(&morphTicks) : 0;\n\n                    if (gameTracker->gameData.asmData.MorphTime >= 1000)\n                    {\n                        morphTicks = 0;\n                    }\n\n                    while ((ticks-- > 0) && (gameTracker->gameData.asmData.MorphTime < 1000))\n                    {\n                        MORPH_Continue();\n                    }\n                }\n")
+
+# NULL read: walking into a warp gate whose destination is not loaded yet
+# read that destination's unit (WarpRoomArray[].streamUnit) before checking
+# it. On PSX that reads zeros and the check below returns; it is checked
+# first (cathy62, walking into the gate before its destination appeared).
+game_fixup(Game/SIGNAL.c
+    FIND    "        newStreamID = WarpRoomArray[CurrentWarpNumber].streamUnit->StreamUnitID;\n"
+    REPLACE "        if (WarpRoomArray[CurrentWarpNumber].streamUnit == NULL)\n        {\n            return 1;\n        }\n\n        newStreamID = WarpRoomArray[CurrentWarpNumber].streamUnit->StreamUnitID;\n")

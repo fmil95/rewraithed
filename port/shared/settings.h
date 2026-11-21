@@ -33,6 +33,7 @@ typedef struct
     int display;            /* DISPLAY_* */
     int width;
     int height;
+    int refresh;            /* fullscreen refresh rate in Hz; 0: the display's own */
     int scaleLinear;        /* movies and 2D screens: 0 nearest, 1 bilinear */
     int vsync;
     int pillarbox;          /* keep 4:3 with bars */

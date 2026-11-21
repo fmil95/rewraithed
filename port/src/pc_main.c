@@ -8,6 +8,7 @@
 
 #include "PsyX/PsyX_public.h"
 #include "settings.h"
+#include "port/gpu_hooks.h"
 
 extern void PsyX_CDFS_Init(const char *imageFileName, int track, int sectorSize);
 
@@ -30,6 +31,7 @@ extern int port_find_disc(char *out, size_t size);
 extern int g_cfg_dithering;
 extern int g_cfg_pillarbox;
 extern void PsyX_PortSetBorderless(void);
+extern void PsyX_PortSetFullscreenMode(int width, int height, int refresh);
 
 /* PsyCross */
 extern int g_cfg_swapInterval;
@@ -381,13 +383,30 @@ int main(int argc, char **argv)
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, port_settings.antialiasing);
     }
 
-    PsyX_Initialise("Rewraithed", port_settings.width, port_settings.height,
-        port_settings.display == DISPLAY_FULLSCREEN);
+    /* Borderless: the window is made at the desktop's size from the start
+     * (PsyCross does so for a size of 0 x 0) instead of being resized once
+     * made, which video capture (OBS's game capture) showed as black for its
+     * first seconds. */
+    if (port_settings.display == DISPLAY_BORDERLESS)
+    {
+        PsyX_Initialise("Rewraithed", 0, 0, 0);
+    }
+    else
+    {
+        PsyX_Initialise("Rewraithed", port_settings.width, port_settings.height,
+            port_settings.display == DISPLAY_FULLSCREEN);
+    }
 
     if (port_settings.display == DISPLAY_BORDERLESS)
     {
         PsyX_PortSetBorderless();
     }
+    else if ((port_settings.display == DISPLAY_FULLSCREEN) && (port_settings.refresh > 0))
+    {
+        PsyX_PortSetFullscreenMode(port_settings.width, port_settings.height, port_settings.refresh);
+    }
+
+    port_setup_vsync_pacing(port_settings.vsync);
 
     port_apply_keys();
 

@@ -40,10 +40,112 @@ static const Resolution resolutions[] = {
     { 720, 576 }, { 720, 480 }, { 640, 480 }, { 320, 240 },
 };
 
+#define COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
+
+/* The Resolution list: each size above, once per refresh rate the monitor
+ * offers at it (fullscreen sets that rate), or once without a rate when the
+ * monitor has no mode of that size (a window can still have it). */
+#define MAX_LIST_ENTRIES 256
+
+typedef struct { int w, h, refresh; } ResolutionEntry;
+
+static ResolutionEntry resolution_list[MAX_LIST_ENTRIES];
+static int resolution_count;
+
+static void build_resolution_list(void)
+{
+    static int rates[MAX_LIST_ENTRIES];
+    int i;
+
+    resolution_count = 0;
+
+    for (i = 0; i < COUNT(resolutions); i++)
+    {
+        DEVMODEW mode;
+        DWORD m;
+        int count = 0;
+        int a;
+        int b;
+
+        memset(&mode, 0, sizeof(mode));
+        mode.dmSize = sizeof(mode);
+
+        for (m = 0; EnumDisplaySettingsW(NULL, m, &mode); m++)
+        {
+            int rate = (int)mode.dmDisplayFrequency;
+            int known = 0;
+
+            if (((int)mode.dmPelsWidth != resolutions[i].w) || ((int)mode.dmPelsHeight != resolutions[i].h) || (rate <= 1))
+            {
+                continue;
+            }
+
+            for (a = 0; a < count; a++)
+            {
+                known |= (rates[a] == rate);
+            }
+
+            if (!known && (count < MAX_LIST_ENTRIES))
+            {
+                rates[count++] = rate;
+            }
+        }
+
+        /* highest rate first */
+        for (a = 0; a < count; a++)
+        {
+            for (b = a + 1; b < count; b++)
+            {
+                if (rates[b] > rates[a])
+                {
+                    int t = rates[a];
+
+                    rates[a] = rates[b];
+                    rates[b] = t;
+                }
+            }
+        }
+
+        if (count == 0)
+        {
+            rates[count++] = 0;
+        }
+
+        for (a = 0; (a < count) && (resolution_count < MAX_LIST_ENTRIES); a++)
+        {
+            resolution_list[resolution_count].w = resolutions[i].w;
+            resolution_list[resolution_count].h = resolutions[i].h;
+            resolution_list[resolution_count].refresh = rates[a];
+            resolution_count++;
+        }
+    }
+}
+
+static void resolution_text(wchar_t *text, int size, int w, int h, int refresh)
+{
+    if (refresh > 0)
+    {
+        swprintf(text, size, L"%d x %d @ %d Hz", w, h, refresh);
+    }
+    else
+    {
+        swprintf(text, size, L"%d x %d", w, h);
+    }
+}
+
+/* the desktop's refresh rate, 0 if unknown */
+static int desktop_refresh(void)
+{
+    DEVMODEW mode;
+
+    memset(&mode, 0, sizeof(mode));
+    mode.dmSize = sizeof(mode);
+
+    return EnumDisplaySettingsW(NULL, ENUM_CURRENT_SETTINGS, &mode) ? (int)mode.dmDisplayFrequency : 0;
+}
+
 /* the Display list, in its order */
 static const int display_order[] = { DISPLAY_FULLSCREEN, DISPLAY_WINDOWED, DISPLAY_BORDERLESS };
-
-#define COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
 
 static const int aa_values[] = { 0, 2, 4, 8 };
 static const int fps_values[] = { 30, 60 };
@@ -222,7 +324,9 @@ static void build_ui(HWND hwnd)
         L"Borderless covers the screen with a window, which is quicker to switch away from.");
     y += 36;
     combo_row(hwnd, L"Resolution", 24, y, 96, 124, 176, ID_RESOLUTION,
-        L"The size the game is drawn at, in pixels: the screen mode in fullscreen, or the size of the window.");
+        L"The size the game is drawn at, in pixels: the screen mode in fullscreen, or the size of the window. "
+        L"Each size the monitor offers is listed once per refresh rate it has at that size; the rate is used in fullscreen. "
+        L"Windowed and borderless keep the desktop's own rate.");
     y += 36;
     combo_row(hwnd, L"Scaling", 24, y, 96, 124, 176, ID_SCALING,
         L"How movies and 2D screens are enlarged to the window. Nearest keeps their pixels sharp, Bilinear smooths them.");
@@ -319,11 +423,13 @@ static void build_ui(HWND hwnd)
         combo_add(ID_DISPLAY, names[display_order[i]]);
     }
 
-    for (i = 0; i < COUNT(resolutions); i++)
-    {
-        wchar_t text[32];
+    build_resolution_list();
 
-        swprintf(text, 32, L"%d x %d", resolutions[i].w, resolutions[i].h);
+    for (i = 0; i < resolution_count; i++)
+    {
+        wchar_t text[48];
+
+        resolution_text(text, 48, resolution_list[i].w, resolution_list[i].h, resolution_list[i].refresh);
         combo_add(ID_RESOLUTION, text);
     }
 
@@ -377,20 +483,43 @@ static void show_settings(void)
 
     sel = -1;
 
-    for (i = 0; i < COUNT(resolutions); i++)
     {
-        if ((resolutions[i].w == settings.width) && (resolutions[i].h == settings.height))
+        /* the saved size and rate; with no rate saved (older settings), the
+         * size at the desktop's rate, else at its first (highest) rate */
+        int wanted = (settings.refresh > 0) ? settings.refresh : desktop_refresh();
+        int first = -1;
+
+        for (i = 0; i < resolution_count; i++)
         {
-            sel = i;
+            if ((resolution_list[i].w != settings.width) || (resolution_list[i].h != settings.height))
+            {
+                continue;
+            }
+
+            if (first < 0)
+            {
+                first = i;
+            }
+
+            if ((resolution_list[i].refresh == wanted) || (resolution_list[i].refresh == 0))
+            {
+                sel = i;
+                break;
+            }
+        }
+
+        if ((sel < 0) && (settings.refresh == 0))
+        {
+            sel = first;
         }
     }
 
     if (sel < 0)
     {
-        /* a size from the file that is not in the list */
-        wchar_t text[32];
+        /* a size or rate from the file that is not in the list */
+        wchar_t text[48];
 
-        swprintf(text, 32, L"%d x %d", settings.width, settings.height);
+        resolution_text(text, 48, settings.width, settings.height, settings.refresh);
         sel = (int)SendDlgItemMessageW(main_window, ID_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)text);
     }
 
@@ -450,13 +579,18 @@ static void show_settings(void)
 static void read_settings(void)
 {
     int sel;
-    wchar_t text[32];
+    wchar_t text[48];
 
     settings.display = display_order[combo_get(ID_DISPLAY)];
 
     sel = combo_get(ID_RESOLUTION);
     SendDlgItemMessageW(main_window, ID_RESOLUTION, CB_GETLBTEXT, sel, (LPARAM)text);
-    swscanf(text, L"%d x %d", &settings.width, &settings.height);
+    settings.refresh = 0;
+
+    if (swscanf(text, L"%d x %d @ %d", &settings.width, &settings.height, &settings.refresh) < 3)
+    {
+        settings.refresh = 0;
+    }
 
     settings.scaleLinear = combo_get(ID_SCALING) == 1;
     settings.vsync = yes_no_get(ID_VSYNC_YES);

@@ -37,6 +37,8 @@ int port_VSyncCallback(void (*func)(void));
  * at 30 the game paces itself as on the PSX; otherwise its minimum time
  * step and two-vblank wait are lifted and port_frame_limit paces it. */
 int port_fps_locked(void);
+int port_vsync_paced(void);
+void port_setup_vsync_pacing(int vsync);
 unsigned int port_min_frame_ms(unsigned int lockRate);
 void port_frame_limit(void);
 

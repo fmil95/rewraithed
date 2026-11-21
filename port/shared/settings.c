@@ -65,6 +65,7 @@ void port_settings_defaults(PortSettings *s)
     s->display = DISPLAY_WINDOWED;
     s->width = 1280;
     s->height = 960;
+    s->refresh = 0;
     s->scaleLinear = 1;
     s->vsync = 1;
     s->pillarbox = 1;
@@ -273,11 +274,14 @@ int port_settings_load(PortSettings *s, const char *path)
         {
             int w;
             int h;
+            int r = 0;
 
-            if ((sscanf(value, "%dx%d", &w, &h) == 2) && (w >= 320) && (h >= 240) && (w <= 7680) && (h <= 4320))
+            /* "1920x1080", or with the fullscreen refresh rate "1920x1080@75" */
+            if ((sscanf(value, "%dx%d@%d", &w, &h, &r) >= 2) && (w >= 320) && (h >= 240) && (w <= 7680) && (h <= 4320))
             {
                 s->width = w;
                 s->height = h;
+                s->refresh = ((r > 0) && (r <= 1000)) ? r : 0;
             }
         }
         else if (_stricmp(key, "Scaling") == 0)         s->scaleLinear = _stricmp(value, "Nearest") != 0;
@@ -332,7 +336,14 @@ int port_settings_save(const PortSettings *s, const char *path)
 
     fprintf(f, "[Display]\n");
     fprintf(f, "Display=%s\n", display_names[s->display]);
-    fprintf(f, "Resolution=%dx%d\n", s->width, s->height);
+    if (s->refresh > 0)
+    {
+        fprintf(f, "Resolution=%dx%d@%d\n", s->width, s->height, s->refresh);
+    }
+    else
+    {
+        fprintf(f, "Resolution=%dx%d\n", s->width, s->height);
+    }
     fprintf(f, "Scaling=%s\n", s->scaleLinear ? "Bilinear" : "Nearest");
     fprintf(f, "Renderer=OpenGL\n");
     fprintf(f, "VSync=%s\n", s->vsync ? "Yes" : "No");

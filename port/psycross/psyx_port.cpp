@@ -44,6 +44,51 @@ void PsyX_PortSetBorderless(void)
     SDL_GetWindowSize(g_window, &g_windowWidth, &g_windowHeight);
 }
 
+/* Fullscreen: the display mode closest to the chosen size and refresh rate
+ * (the launcher's Resolution list). */
+void PsyX_PortSetFullscreenMode(int width, int height, int refresh)
+{
+    SDL_DisplayMode want;
+    SDL_DisplayMode got;
+    int display;
+
+    if (g_window == NULL)
+    {
+        return;
+    }
+
+    display = SDL_GetWindowDisplayIndex(g_window);
+
+    memset(&want, 0, sizeof(want));
+    want.w = width;
+    want.h = height;
+    want.refresh_rate = refresh;
+
+    if ((display < 0) || (SDL_GetClosestDisplayMode(display, &want, &got) == NULL))
+    {
+        printf("[rewraithed] no fullscreen mode near %dx%d @ %d Hz\n", width, height, refresh);
+        return;
+    }
+
+    if (SDL_SetWindowDisplayMode(g_window, &got) == 0)
+    {
+        printf("[rewraithed] fullscreen mode %dx%d @ %d Hz\n", got.w, got.h, got.refresh_rate);
+    }
+}
+
+/* Refresh rate of the window's display, 0 if unknown. */
+int PsyX_PortRefreshRate(void)
+{
+    SDL_DisplayMode mode;
+
+    if ((g_window == NULL) || (SDL_GetWindowDisplayMode(g_window, &mode) != 0))
+    {
+        return 0;
+    }
+
+    return mode.refresh_rate;
+}
+
 /* Window title, e.g. to show the frame rate. */
 void PsyX_PortSetTitle(const char *title)
 {
@@ -425,6 +470,63 @@ typedef struct
 
 static PortPgxpEntry pgxp_cache[1 << 16];
 static unsigned int pgxp_frame = 1;
+
+/* REWRAITHED_PACELOG: how long each picture stayed up (the time between one
+ * swap returning and the next), every 300 pictures, in display refreshes
+ * of the window's display */
+void PsyX_PortAfterSwap(void)
+{
+    static int enabled = -1;
+    static Uint64 last;
+    static int counts[6];
+    static int total;
+    Uint64 now;
+    double ms;
+    double refresh = 1000.0 / 60.0;
+    SDL_DisplayMode mode;
+
+    if (enabled < 0)
+    {
+        enabled = (getenv("REWRAITHED_PACELOG") != NULL);
+    }
+
+    if (!enabled)
+    {
+        return;
+    }
+
+    now = SDL_GetPerformanceCounter();
+
+    if (last != 0)
+    {
+        int bucket;
+
+        if ((SDL_GetWindowDisplayMode(g_window, &mode) == 0) && (mode.refresh_rate > 0))
+        {
+            refresh = 1000.0 / mode.refresh_rate;
+        }
+
+        ms = (double)(now - last) * 1000.0 / (double)SDL_GetPerformanceFrequency();
+        bucket = (int)(ms / refresh + 0.5);
+
+        if (bucket > 5)
+        {
+            bucket = 5;
+        }
+
+        counts[bucket]++;
+
+        if (++total == 300)
+        {
+            printf("[rewraithed] pace (refreshes per picture): 0:%d 1:%d 2:%d 3:%d 4:%d 5+:%d\n",
+                counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]);
+            memset(counts, 0, sizeof(counts));
+            total = 0;
+        }
+    }
+
+    last = now;
+}
 
 void PsyX_PortBeforeSwap(void)
 {

@@ -681,9 +681,112 @@ static int port_fps_target(void)
     return fps;
 }
 
+/* VSync at 30 FPS. The game used to wait for its own vertical blanks (the
+ * port's 59.94 Hz timer), and the swap then waited again for the display's
+ * next refresh; the two drifted, and the pictures stayed up for an uneven
+ * mix of refreshes, a little under 30 a second (a stutter that shows in
+ * recordings). With VSync the game no longer waits for its timer:
+ *  - on a display whose refresh is a multiple of 30 (60, 120 Hz), every swap
+ *    waits for refresh / 30 refreshes: each picture stays up exactly 1/30 s;
+ *  - on others (75, 144 Hz), port_frame_limit() starts a frame every 1/30 s
+ *    and the swap shows it at the next refresh: the most even pattern that
+ *    display allows (2, 3, 2, 3 refreshes at 75 Hz), at 30 a second.
+ * VSync off keeps the timer. */
+static int vsync_mode;  /* 0 the game's timer, 1 the swap interval, 2 port_frame_limit */
+
+int port_vsync_paced(void)
+{
+    return vsync_mode != 0;
+}
+
+void port_setup_vsync_pacing(int vsync)
+{
+    extern int PsyX_PortRefreshRate(void);
+    int rate = PsyX_PortRefreshRate();
+
+    vsync_mode = 0;
+
+    if (!vsync || !port_fps_locked())
+    {
+        return;
+    }
+
+    if ((rate >= 30) && ((rate % 30) == 0))
+    {
+        vsync_mode = 1;
+        PsyX_SetSwapInterval(rate / 30);
+        printf("[rewraithed] VSync paces the frames: one picture every %d refreshes of %d Hz\n", rate / 30, rate);
+    }
+    else
+    {
+        vsync_mode = 2;
+        printf("[rewraithed] VSync: %d Hz display, frames started every 1/30 s\n", rate);
+    }
+}
+
 int port_fps_locked(void)
 {
     return port_fps_target() == 30;
+}
+
+/* Above 30 FPS, code written for the PSX's 30 FPS that steps once per frame
+ * runs too fast. port_frame_limit() counts, once per frame, the 30-per-
+ * second ticks due by the FPS target (not the game clock, so that they keep
+ * going while the game is paused):
+ *  - port_hud_ticks(): the ticks due this frame (the spiral HUD);
+ *  - port_frame30(): a frame counter at 30 per second (texture animations,
+ *    which the game takes from gameTrackerX.frameCount).
+ * At 30 FPS they are 1 and the game's own frameCount. */
+static int port_ticks30 = 1;
+static unsigned long port_count30;
+
+static void port_count_ticks30(void)
+{
+    static int accumulator;
+
+    if (port_fps_locked() || (port_fps_target() <= 0))
+    {
+        port_ticks30 = 1;
+        return;
+    }
+
+    accumulator += (30 * 4096) / port_fps_target();
+    port_ticks30 = accumulator / 4096;
+    accumulator -= port_ticks30 * 4096;
+    port_count30 += port_ticks30;
+}
+
+/* 30-per-second ticks of game time (gameTrackerX.timeMult, 4096 per PSX
+ * frame) due this frame, for game code that steps once per frame (the
+ * plane shift's morph, the levels' vertex animations); each caller keeps
+ * its own accumulator. Always 1 at 30 FPS, at most 4 after a long frame. */
+int port_game_ticks(long *accumulator)
+{
+    extern GameTracker gameTrackerX;
+    int ticks;
+
+    if (port_fps_locked() || (port_fps_target() <= 0))
+    {
+        return 1;
+    }
+
+    *accumulator += gameTrackerX.timeMult;
+    ticks = *accumulator / 4096;
+    *accumulator -= ticks * 4096;
+
+    return (ticks > 4) ? 4 : ticks;
+}
+
+int port_hud_ticks(void)
+{
+    return port_ticks30;
+}
+
+unsigned long port_frame30(void)
+{
+    extern GameTracker gameTrackerX;
+
+    return (port_fps_locked() || (port_fps_target() <= 0)) ? gameTrackerX.frameCount : port_count30;
 }
 
 unsigned int port_min_frame_ms(unsigned int lockRate)
@@ -698,7 +801,9 @@ void port_frame_limit(void)
     Uint64 period;
     Uint64 now;
 
-    if (port_fps_locked() || (port_fps_target() <= 0))
+    port_count_ticks30();
+
+    if ((port_fps_locked() && (vsync_mode != 2)) || (port_fps_target() <= 0))
     {
         return;
     }
