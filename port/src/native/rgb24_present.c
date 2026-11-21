@@ -163,6 +163,9 @@ void port_present_rgb24(int x, int y, int w, int h)
         GR_ReadVRAM(packed, x, y, halfwords, h);
 
         glBindTexture(GL_TEXTURE_2D, rgb_texture);
+        /* each frame: F4 changes "Scaling" while playing (video_hotkeys.c) */
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, port_settings.scaleLinear ? GL_LINEAR : GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, port_settings.scaleLinear ? GL_LINEAR : GL_NEAREST);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, halfwords * 2 / 3);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, packed);

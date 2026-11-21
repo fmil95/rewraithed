@@ -44,12 +44,17 @@ void PsyX_PortSetBorderless(void)
     SDL_GetWindowSize(g_window, &g_windowWidth, &g_windowHeight);
 }
 
-/* Fullscreen: the display mode closest to the chosen size and refresh rate
- * (the launcher's Resolution list). */
+/* Fullscreen at the display mode closest to the chosen size and refresh rate
+ * (the launcher's Resolution list), from a window made windowed: the mode is
+ * set before the window goes fullscreen, so the display changes mode once.
+ * When that mode is not the desktop's, the display goes dark for a moment
+ * while it resyncs; the game waits it out on a black picture, so that the
+ * first logo is not shown to a dark screen. */
 void PsyX_PortSetFullscreenMode(int width, int height, int refresh)
 {
     SDL_DisplayMode want;
     SDL_DisplayMode got;
+    SDL_DisplayMode desktop;
     int display;
 
     if (g_window == NULL)
@@ -64,15 +69,40 @@ void PsyX_PortSetFullscreenMode(int width, int height, int refresh)
     want.h = height;
     want.refresh_rate = refresh;
 
-    if ((display < 0) || (SDL_GetClosestDisplayMode(display, &want, &got) == NULL))
+    if ((display >= 0) && (SDL_GetClosestDisplayMode(display, &want, &got) != NULL))
+    {
+        SDL_SetWindowDisplayMode(g_window, &got);
+    }
+    else
     {
         printf("[rewraithed] no fullscreen mode near %dx%d @ %d Hz\n", width, height, refresh);
-        return;
+        got = want;
     }
 
-    if (SDL_SetWindowDisplayMode(g_window, &got) == 0)
+    SDL_SetWindowFullscreen(g_window, SDL_WINDOW_FULLSCREEN);
+    SDL_GetWindowSize(g_window, &g_windowWidth, &g_windowHeight);
+
+    printf("[rewraithed] fullscreen mode %dx%d @ %d Hz\n", got.w, got.h, got.refresh_rate);
+
+    if ((display >= 0) && (SDL_GetDesktopDisplayMode(display, &desktop) == 0) &&
+        ((desktop.w != got.w) || (desktop.h != got.h) || ((got.refresh_rate != 0) && (desktop.refresh_rate != got.refresh_rate))))
     {
-        printf("[rewraithed] fullscreen mode %dx%d @ %d Hz\n", got.w, got.h, got.refresh_rate);
+        Uint32 until = SDL_GetTicks() + 2000;
+
+        while (SDL_GetTicks() < until)
+        {
+            SDL_Event event;
+
+            while (SDL_PollEvent(&event))
+            {
+            }
+
+            glViewport(0, 0, g_windowWidth, g_windowHeight);
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            SDL_GL_SwapWindow(g_window);
+            SDL_Delay(10);
+        }
     }
 }
 

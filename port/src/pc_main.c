@@ -393,15 +393,16 @@ int main(int argc, char **argv)
     }
     else
     {
-        PsyX_Initialise("Rewraithed", port_settings.width, port_settings.height,
-            port_settings.display == DISPLAY_FULLSCREEN);
+        /* Fullscreen: made as a window, then given its display mode and made
+         * fullscreen (PsyX_PortSetFullscreenMode): one change of mode */
+        PsyX_Initialise("Rewraithed", port_settings.width, port_settings.height, 0);
     }
 
     if (port_settings.display == DISPLAY_BORDERLESS)
     {
         PsyX_PortSetBorderless();
     }
-    else if ((port_settings.display == DISPLAY_FULLSCREEN) && (port_settings.refresh > 0))
+    else if (port_settings.display == DISPLAY_FULLSCREEN)
     {
         PsyX_PortSetFullscreenMode(port_settings.width, port_settings.height, port_settings.refresh);
     }

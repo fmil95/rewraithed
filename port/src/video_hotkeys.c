@@ -3,7 +3,8 @@
  * which moved the keyboard to another controller port and toggled a PGXP
  * this build does not have, give way to these; fixup in PsyX_main.cpp):
  *
- *  F4   Scaling: Nearest, Bilinear (movies and 2D screens)
+ *  F4   Scaling: Nearest, Bilinear (movies and full-screen 2D pictures,
+ *       such as the legal and loading screens; not the 3D game, F3 is that)
  *  F5   VSync: on, off
  *  F6   FPS limit: 30, 60
  *  F7   PGXP: on, off
