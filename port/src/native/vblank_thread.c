@@ -5,6 +5,8 @@
  */
 #include <SDL.h>
 
+int port_is_paused(void);  /* port/src/focus_pause.c */
+
 static void (*vblank_handler)(void);
 static SDL_Thread *vblank_thread;
 static volatile int vblank_running;
@@ -30,6 +32,12 @@ static int vblank_main(void *unused)
         }
 
         next += period;
+
+        /* the window is hidden (port/src/focus_pause.c): the game is paused */
+        if (port_is_paused())
+        {
+            continue;
+        }
 
         /* after a long stall, do not replay the missed fields */
         if (now > next + period * 4)

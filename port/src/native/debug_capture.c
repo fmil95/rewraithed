@@ -185,6 +185,19 @@ static void apply_keys(void)
         else if (frame_count == kp->frame + kp->duration)
         {
             state[kp->key] = 0;
+
+            /* function keys act on key events (PsyCross's hotkeys) */
+            if ((kp->key >= SDL_SCANCODE_F1) && (kp->key <= SDL_SCANCODE_F12))
+            {
+                SDL_Event event;
+
+                memset(&event, 0, sizeof(event));
+                event.type = SDL_KEYUP;
+                event.key.state = SDL_RELEASED;
+                event.key.keysym.scancode = kp->key;
+                event.key.keysym.sym = SDL_GetKeyFromScancode(kp->key);
+                SDL_PushEvent(&event);
+            }
         }
     }
 }

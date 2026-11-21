@@ -76,6 +76,12 @@ void PsyX_PortSetFullscreenMode(int width, int height, int refresh)
     }
 }
 
+/* The window's SDL flags (minimized, input focus), 0 without a window. */
+unsigned int PsyX_PortWindowFlags(void)
+{
+    return (g_window != NULL) ? (unsigned int)SDL_GetWindowFlags(g_window) : 0;
+}
+
 /* Refresh rate of the window's display, 0 if unknown. */
 int PsyX_PortRefreshRate(void)
 {

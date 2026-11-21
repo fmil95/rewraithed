@@ -27,11 +27,13 @@
 #include "port/memory_map.h"
 #include "settings.h"
 #include "dc_disc.h"
+#include "Game/OBTABLE.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 /* bigfile hashes of the two objects on the Dreamcast disc (its names do not
  * hash as the game's do), and the name each object file carries */
@@ -56,8 +58,10 @@ void PsyX_PortSetExtTexture(int slot, const unsigned char *rgba, int width, int 
 typedef struct
 {
     char name[16];
+    int tried;              /* the Dreamcast model was looked for */
     int failed;             /* not there, or not usable: not tried again */
     Model *model;
+    Model *psx;             /* the object's own model, for F11 */
 } DcModel;
 
 static DcModel dc_models[DC_MAX_MODELS];
@@ -511,21 +515,41 @@ static Model *dc_load_model(const char *name)
     return model;
 }
 
+/* the Dreamcast model for one of the two objects, loaded the first time */
+static void dc_try_load(DcModel *dc, Model *psx)
+{
+    if (dc->tried)
+    {
+        return;
+    }
+
+    dc->tried = 1;
+    dc->model = dc_load_model(dc->name);
+    dc->failed = (dc->model == NULL);
+
+    if ((dc->model != NULL) && (dc->model->numSegments != psx->numSegments))
+    {
+        printf("[rewraithed] Dreamcast %s has %ld segments, not %ld: not used\n", dc->name,
+            (long)dc->model->numSegments, (long)psx->numSegments);
+        dc->failed = 1;
+    }
+
+    if (!dc->failed)
+    {
+        printf("[rewraithed] Dreamcast model for %s: %ld vertices, %ld faces\n", dc->name,
+            (long)dc->model->numVertices, (long)dc->model->numFaces);
+    }
+}
+
 /* STREAM_LoadObjectReturn: an object has been loaded */
 void port_dc_object_loaded(char *name, Object *object)
 {
     DcModel *dc = NULL;
-    Model *psx;
     int i;
 
     /* a level's object list may spell the name in either case (the game
      * compares object names with strcmpi) */
     if ((_stricmp(name, "raziel") != 0) && (_stricmp(name, "kain") != 0))
-    {
-        return;
-    }
-
-    if (!port_settings.dcModels)
     {
         return;
     }
@@ -551,25 +575,19 @@ void port_dc_object_loaded(char *name, Object *object)
         }
 
         dc = &dc_models[dc_model_count++];
+        memset(dc, 0, sizeof(*dc));
         snprintf(dc->name, sizeof(dc->name), "%s", name);
-        dc->model = dc_load_model(name);
-        dc->failed = (dc->model == NULL);
-
-        psx = object->modelList[0];
-
-        if ((dc->model != NULL) && (dc->model->numSegments != psx->numSegments))
-        {
-            printf("[rewraithed] Dreamcast %s has %ld segments, not %ld: not used\n", name,
-                (long)dc->model->numSegments, (long)psx->numSegments);
-            dc->failed = 1;
-        }
-
-        if (!dc->failed)
-        {
-            printf("[rewraithed] Dreamcast model for %s: %ld vertices, %ld faces\n", name,
-                (long)dc->model->numVertices, (long)dc->model->numFaces);
-        }
     }
+
+    /* kept even with the models off, so that F11 can turn them on */
+    dc->psx = object->modelList[0];
+
+    if (!port_settings.dcModels)
+    {
+        return;
+    }
+
+    dc_try_load(dc, dc->psx);
 
     if (!dc->failed)
     {
@@ -577,3 +595,50 @@ void port_dc_object_loaded(char *name, Object *object)
     }
 }
 
+/* F11 (video_hotkeys.c): the Dreamcast models on or off while playing. The
+ * objects are looked up again, as Kain's may have gone with its level. */
+void port_dc_set_enabled(int on)
+{
+    int i;
+
+    port_settings.dcModels = on;
+
+    for (i = 0; i < dc_model_count; i++)
+    {
+        DcModel *dc = &dc_models[i];
+        char objectName[9];
+        Object *object;
+        size_t n = strlen(dc->name);
+
+        /* object names are 8 characters, padded with '_' */
+        memset(objectName, '_', 8);
+        objectName[8] = 0;
+        memcpy(objectName, dc->name, (n < 8) ? n : 8);
+
+        for (n = 0; n < 8; n++)
+        {
+            objectName[n] = (char)tolower((unsigned char)objectName[n]);
+        }
+
+        object = OBTABLE_FindObject(objectName);
+
+        if ((object == NULL) || (object->numModels < 1) || (dc->psx == NULL))
+        {
+            continue;
+        }
+
+        if (on)
+        {
+            dc_try_load(dc, dc->psx);
+
+            if (!dc->failed)
+            {
+                object->modelList[0] = dc->model;
+            }
+        }
+        else
+        {
+            object->modelList[0] = dc->psx;
+        }
+    }
+}

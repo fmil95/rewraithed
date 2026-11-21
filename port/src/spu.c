@@ -957,6 +957,15 @@ static void spu_open_device(void)
 
 /* --- libspu -------------------------------------------------------------- */
 
+/* the window is hidden (focus_pause.c): no sound until it is back */
+void port_spu_pause(int pause)
+{
+    if (spu_device != 0)
+    {
+        SDL_PauseAudioDevice(spu_device, pause ? 1 : 0);
+    }
+}
+
 void port_SpuInit(void)
 {
     spu_open_device();

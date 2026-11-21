@@ -815,3 +815,27 @@ game_fixup(Game/GAMELOOP.c
 game_fixup(Game/SIGNAL.c
     FIND    "        newStreamID = WarpRoomArray[CurrentWarpNumber].streamUnit->StreamUnitID;\n"
     REPLACE "        if (WarpRoomArray[CurrentWarpNumber].streamUnit == NULL)\n        {\n            return 1;\n        }\n\n        newStreamID = WarpRoomArray[CurrentWarpNumber].streamUnit->StreamUnitID;\n")
+
+# PsyCross's F4 (keyboard to the next controller port: the game then no
+# longer answers), F5 and F6 (its own PGXP, not built here) give way to the
+# port's video keys, with F7, F8, F9 and F11 (video_hotkeys.c).
+psycross_fixup(PsyX_main.cpp
+    FIND    "\t\tcase SDL_SCANCODE_F4:\n\n\t\t\tg_activeKeyboardControllers++;\n\t\t\tg_activeKeyboardControllers = g_activeKeyboardControllers % 4;\n\n\t\t\tif (g_activeKeyboardControllers == 0)\n\t\t\t\tg_activeKeyboardControllers++;\n\n\t\t\teprintwarn(\"Active keyboard controller: %d\\n\", g_activeKeyboardControllers);\n\t\t\tbreak;\n\t\tcase SDL_SCANCODE_F5:\n\t\t\tg_cfg_pgxpTextureCorrection ^= 1;\n\t\t\tbreak;\n\t\tcase SDL_SCANCODE_F6:\n\t\t\tg_cfg_pgxpZBuffer ^= 1;\n\t\t\tbreak;\n"
+    REPLACE "\t\tcase SDL_SCANCODE_F4:\n\t\tcase SDL_SCANCODE_F5:\n\t\tcase SDL_SCANCODE_F6:\n\t\tcase SDL_SCANCODE_F7:\n\t\tcase SDL_SCANCODE_F8:\n\t\tcase SDL_SCANCODE_F9:\n\t\tcase SDL_SCANCODE_F11:\n\t\t\tPsyX_PortVideoHotkey(nKey);\n\t\t\tbreak;\n")
+
+psycross_fixup(PsyX_main.cpp
+    FIND    "void PsyX_Sys_DoDebugKeys(int nKey, char down)\n{"
+    REPLACE "extern \"C\" void PsyX_PortVideoHotkey(int scancode);\n\nvoid PsyX_Sys_DoDebugKeys(int nKey, char down)\n{")
+
+# NULL read: a falling physical object realigned before its first frame
+# had previous segment matrices (instance->oldMatrix). On PSX that reads
+# zeros; the current matrix stands in (no movement yet).
+game_fixup(Game/PHYSOBS.c
+    FIND    "        mat = &instance->oldMatrix[i];\n"
+    REPLACE "        mat = (instance->oldMatrix != NULL) ? &instance->oldMatrix[i] : &instance->matrix[i];\n")
+
+# The shaders again, for dithering switched while playing (F9): it is
+# compiled into them (NO_DITHERING).
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "void GR_InitRG8LUT()\n"
+    REPLACE "extern \"C\" void PsyX_PortRebuildShaders(void)\n{\n\tglUseProgram(0);\n\tg_PreviousShader = -1;\n\tg_lastBoundTexture = 0;\n\n\tglDeleteProgram(g_gpu_shader_4.shader);\n\tglDeleteProgram(g_gpu_shader_8.shader);\n\tglDeleteProgram(g_gpu_shader_16.shader);\n\tglDeleteProgram(g_gpu_shader_32_rgba.shader);\n\n\tGR_InitialisePSXShaders();\n}\n\nvoid GR_InitRG8LUT()\n")

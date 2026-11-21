@@ -706,6 +706,9 @@ void port_setup_vsync_pacing(int vsync)
 
     vsync_mode = 0;
 
+    /* again from the start when the FPS limit changes (F6) */
+    PsyX_SetSwapInterval(1);
+
     if (!vsync || !port_fps_locked())
     {
         return;
@@ -800,6 +803,12 @@ void port_frame_limit(void)
     Uint64 freq;
     Uint64 period;
     Uint64 now;
+
+    {
+        extern void port_focus_check(void);  /* focus_pause.c */
+
+        port_focus_check();
+    }
 
     port_count_ticks30();
 

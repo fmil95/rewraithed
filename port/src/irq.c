@@ -128,6 +128,8 @@ void ExitCriticalSection(void)
     }
 }
 
+int port_is_paused(void);  /* focus_pause.c */
+
 static int SDLCALL irq_main(void *unused)
 {
     Uint64 freq = SDL_GetPerformanceFrequency();
@@ -142,6 +144,14 @@ static int SDLCALL irq_main(void *unused)
     {
         Uint64 now = SDL_GetPerformanceCounter();
         Uint64 period = (Uint64)((double)freq * rc1_target / HSYNC_RATE);
+
+        /* the window is hidden (focus_pause.c): the game is paused */
+        if (port_is_paused())
+        {
+            next = now + period;
+            SDL_Delay(5);
+            continue;
+        }
 
         if (seen_restart != rc1_restart)
         {
