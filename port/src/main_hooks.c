@@ -159,11 +159,11 @@ void CINE_Play(char *strfile, unsigned short mask, int buffers)
     CINE_Play_psx(strfile, mask, buffers);
 }
 
-/* "Disable Cutscene Letterboxing", with Pillarboxing only (F8 can turn that
- * off in game): GAMELOOP_HandleScreenWipes leaves out the cutscene bars */
+/* "Disable Cutscene Bars": GAMELOOP_HandleScreenWipes leaves out the
+ * cutscene bars */
 int port_no_letterbox(void)
 {
-    return port_settings.noLetterbox && port_settings.pillarbox;
+    return port_settings.noLetterbox;
 }
 
 /* -skiplogos: and no legal screen either (show_screen draws only that one) */

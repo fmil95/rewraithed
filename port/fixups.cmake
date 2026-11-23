@@ -926,3 +926,14 @@ game_fixup(Game/GAMELOOP.c
 psycross_fixup(gpu/PsyX_GPU.cpp
     FIND    "static void AddSplit(bool semiTrans, bool textured)\n{\n\tint tpage = activeDrawEnv.tpage;\n"
     REPLACE "extern \"C\" int PsyX_PortReadsDrawBuffer(int tpage, const RECT16 *clip);\nextern \"C\" void PsyX_PortStoreWindowToVRAM(int x, int y, int w, int h);\nvoid DrawAllSplits();\nvoid GR_UpdateVRAM();\n\nstatic void AddSplit(bool semiTrans, bool textured)\n{\n\tif (textured && !g_DrawPrimMode && PsyX_PortReadsDrawBuffer(activeDrawEnv.tpage, &activeDrawEnv.clip))\n\t{\n\t\tGPUDrawSplit& lastSplit = g_splits[g_splitIndex];\n\t\tlastSplit.numVerts = g_vertexIndex - lastSplit.startVertex;\n\n\t\tDrawAllSplits();\n\t\tPsyX_PortStoreWindowToVRAM(activeDrawEnv.clip.x, activeDrawEnv.clip.y, activeDrawEnv.clip.w, activeDrawEnv.clip.h);\n\t\tGR_UpdateVRAM();\n\t}\n\n\tint tpage = activeDrawEnv.tpage;\n")
+
+
+# Raziel's shadow is a fan of ten triangles around his feet, each sorted
+# by its own average depth. A far one could sort behind the floor polygon
+# under it, which was then drawn over it: a triangle missing from the
+# shadow while walking. No shadow triangle sorts farther than the shadow's
+# centre (its first vertex, under his feet), so the floor never covers
+# it; the near ones keep their place in front of his feet.
+game_fixup(Game/DRAW.c
+    FIND    "            gte_stotz(&otz);\n\n            if ((otz >= 64) && (otz < 3072))\n            {\n                gte_stsxy3(&sg3->x0, &sg3->x1, &sg3->x2);"
+    REPLACE "            gte_stotz(&otz);\n\n            {\n                long z0, z1, z2;\n                long centreOtz;\n\n                gte_stsz3(&z0, &z1, &z2);\n\n                if ((z0 + z1 + z2) > 0)\n                {\n                    centreOtz = (otz * 3 * z0) / (z0 + z1 + z2);\n\n                    if (otz > centreOtz)\n                    {\n                        otz = centreOtz;\n                    }\n                }\n            }\n\n            if ((otz >= 64) && (otz < 3072))\n            {\n                gte_stsxy3(&sg3->x0, &sg3->x1, &sg3->x2);")

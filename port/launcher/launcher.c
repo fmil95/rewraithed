@@ -308,18 +308,6 @@ static int area_list_width(HWND parent)
     return MulDiv(widest + GetSystemMetrics(SM_CXVSCROLL), 96, dpi) + 14;
 }
 
-/* Disable Cutscene Letterboxing: only with Pillarboxing */
-static HWND nolb_label;
-
-static void update_letterbox_option(void)
-{
-    BOOL on = yes_no_get(ID_PILLAR_YES);
-
-    EnableWindow(nolb_label, on);
-    EnableWindow(GetDlgItem(main_window, ID_NOLB_YES), on);
-    EnableWindow(GetDlgItem(main_window, ID_NOLB_NO), on);
-}
-
 /* Game Movies: one of DC, PC, PSX (MOVIES_*) */
 static void movies_set(int which)
 {
@@ -401,9 +389,9 @@ static void build_ui(HWND hwnd)
         L"Writes what the game does to rewraithed.log next to the game, including the details of a crash, "
         L"and how textures are placed in video memory to vram.log. Useful when reporting problems.");
     y += 36;
-    nolb_label = yes_no_row(hwnd, L"Disable Cutscene Bars", 336, y, 144, 484, ID_NOLB_YES,
+    yes_no_row(hwnd, L"Disable Cutscene Bars", 336, y, 144, 484, ID_NOLB_YES,
         L"Leaves out the black bars at the top and bottom of the screen during cutscenes, "
-        L"so they fill the 4:3 picture. Only with Pillarboxing.");
+        L"so they fill the picture.");
     y += 36;
     yes_no_row(hwnd, L"Discord Rich Presence", 336, y, 144, 484, ID_DISCORD_YES,
         L"Shows on your Discord profile that you are playing Rewraithed, with the area you are in and the realm. "
@@ -575,7 +563,6 @@ static void show_settings(void)
     yes_no_set(ID_VSYNC_YES, settings.vsync);
     yes_no_set(ID_PILLAR_YES, settings.pillarbox);
     yes_no_set(ID_NOLB_YES, settings.noLetterbox);
-    update_letterbox_option();
     combo_set(ID_FILTERING, settings.filtering ? 1 : 0);
     yes_no_set(ID_PGXP_YES, settings.pgxp);
 
@@ -923,12 +910,6 @@ static LRESULT CALLBACK main_proc_options(HWND hwnd, UINT msg, WPARAM wp, LPARAM
             }
 
             yes_no_set(yesId, id == yesId);
-
-            if ((id == ID_PILLAR_YES) || (id == ID_PILLAR_NO))
-            {
-                update_letterbox_option();
-            }
-
             return 0;
         }
         case ID_NOLB_YES: case ID_NOLB_NO:
