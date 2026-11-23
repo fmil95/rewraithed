@@ -154,7 +154,7 @@ int qols_dialog(HWND owner, PortSettings *s, HFONT font, int dpi)
             int yesId;
         } rows[] = {
             { L"Add health and energy rechargers in Underworld",
-              L"Uses the under1 in the mods folder, with a health and an energy recharger. They stay hidden until "
+              L"Places a health and an energy recharger in the Underworld (under1). They stay hidden until "
               L"Kain's scene in pillars1 shows that area's own.", ID_CHARGERS_YES },
 #if QOLS_SHOW_ABBEY
             { L"Make Drowned Abbey jumps more forgiving",

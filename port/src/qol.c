@@ -55,9 +55,12 @@ void port_qol_monster_intro(Instance *instance)
 }
 
 /*
- * "Add health and energy rechargers in Underworld": with the option on, the
- * modded under1 in the mods folder is used (mod_files.c), which places a
- * healthr and an eaggotr there. Like pillars1's own pair, they stay hidden
+ * "Add health and energy rechargers in Underworld": with the option on, a
+ * healthr and an eaggotr are placed in under1, the disc's own (nothing is
+ * needed in the mods folder): their objects are the same ones pillars1
+ * uses, loaded when wanted (STREAM_GetObjectTracker), and their intros are
+ * the port's (port_qol_place_chargers), brought in as a level's own are.
+ * Like pillars1's own pair, they stay hidden
  * until Kain's scene in pillars1 shows them: that scene (event -6) shows
  * pillars1's pair and adds 1 to variable 2 of pillars1's event 3, which
  * keeps them shown from then on. The Underworld's pair follows that variable,
@@ -80,6 +83,143 @@ static int port_in_under1(long streamUnitID)
     Level *level = STREAM_GetLevelWithID(streamUnitID);
 
     return (level != NULL) && (level->worldName != NULL) && (_stricmp(level->worldName, "under1") == 0);
+}
+
+/* The two rechargers, as placed in under1 (its own coordinates): beside the
+ * hint at (-2807, 729, 100), turned a quarter. The unique IDs are far above
+ * the game's (those of a level, and 8192 up for the instances it makes), so
+ * no other instance has them; above 8191, a saved one is kept with its own
+ * position and flags (SAVE_SaveableInstance) and brought back from there. */
+static const struct
+{
+    const char *name;
+    long uniqueID;
+    short x, y, z;
+} port_chargers[] = {
+    { "eaggotr", 32512, -2800, -200, 0 },
+    { "healthr", 32513, -2800, -1000, 0 },
+};
+
+#define PORT_CHARGERS ((int)(sizeof(port_chargers) / sizeof(port_chargers[0])))
+
+static Intro port_charger_intros[PORT_CHARGERS];
+static long port_chargers_unit = -1;    /* under1's unit the intros were made for */
+static Level *port_chargers_level;
+
+/* under1, if it is loaded */
+static StreamUnit *port_find_under1(void)
+{
+    int i;
+
+    for (i = 0; i < 16; i++)
+    {
+        StreamUnit *unit = &StreamTracker.StreamList[i];
+
+        if ((unit->used == 2) && (unit->level != NULL) && (unit->level->worldName != NULL) &&
+            (_stricmp(unit->level->worldName, "under1") == 0))
+        {
+            return unit;
+        }
+    }
+
+    return NULL;
+}
+
+/* where under1's own coordinates are in the world: its hint intro (UniqueID
+ * 60, at (-2807, 729, 100) in under1) moved with it; 0 if it is not there */
+static int port_under1_offset(Level *level, Position *offset)
+{
+    long i;
+
+    for (i = 0; i < level->numIntros; i++)
+    {
+        Intro *intro = &level->introList[i];
+
+        if ((intro->UniqueID == 60) && (_strnicmp(intro->name, "hint", 4) == 0))
+        {
+            offset->x = intro->position.x + 2807;
+            offset->y = intro->position.y - 729;
+            offset->z = intro->position.z - 100;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+/* each frame with the option on: the rechargers are brought into under1
+ * while it is loaded, once their objects have loaded */
+static void port_qol_place_chargers(void)
+{
+    StreamUnit *unit = port_find_under1();
+    long i;
+    int c;
+
+    if (unit == NULL)
+    {
+        port_chargers_unit = -1;
+        port_chargers_level = NULL;
+        return;
+    }
+
+    /* a level that places its own (a modded under1) is left as it is */
+    for (i = 0; i < unit->level->numIntros; i++)
+    {
+        if (port_is_charger(unit->level->introList[i].name) && (unit->level->introList[i].UniqueID < 8192))
+        {
+            return;
+        }
+    }
+
+    if ((port_chargers_unit != unit->StreamUnitID) || (port_chargers_level != unit->level))
+    {
+        Position offset;
+
+        if (!port_under1_offset(unit->level, &offset))
+        {
+            return;
+        }
+
+        memset(port_charger_intros, 0, sizeof(port_charger_intros));
+
+        for (c = 0; c < PORT_CHARGERS; c++)
+        {
+            Intro *intro = &port_charger_intros[c];
+
+            snprintf(intro->name, sizeof(intro->name), "%s", port_chargers[c].name);
+            intro->UniqueID = port_chargers[c].uniqueID;
+            intro->rotation.z = 1024;
+            intro->position.x = port_chargers[c].x + offset.x;
+            intro->position.y = port_chargers[c].y + offset.y;
+            intro->position.z = port_chargers[c].z + offset.z;
+            intro->maxRad = 302;
+            intro->maxRadSq = 302 * 302;
+        }
+
+        port_chargers_unit = unit->StreamUnitID;
+        port_chargers_level = unit->level;
+    }
+
+    for (c = 0; c < PORT_CHARGERS; c++)
+    {
+        Intro *intro = &port_charger_intros[c];
+        ObjectTracker *tracker;
+
+        if (INSTANCE_Introduced(intro, (short)unit->StreamUnitID))
+        {
+            continue;
+        }
+
+        /* starts loading the object if it is not loaded */
+        tracker = STREAM_GetObjectTracker(intro->name);
+
+        if ((tracker != NULL) && (tracker->objectStatus == OBJECTTRACKER_USED) &&
+            (INSTANCE_IntroduceInstance(intro, (short)unit->StreamUnitID) != NULL))
+        {
+            printf("[rewraithed] QoLs: %s placed in under1 at (%d, %d, %d)\n", intro->name,
+                intro->position.x, intro->position.y, intro->position.z);
+        }
+    }
 }
 
 /* Kain's scene in pillars1 has shown its rechargers */
@@ -198,6 +338,8 @@ void port_qol_frame(void)
         return;
     }
 
+    port_qol_place_chargers();
+
     for (instance = gameTrackerX.instanceList->first; instance != NULL; instance = instance->next)
     {
         int hidden;
@@ -221,7 +363,8 @@ void port_qol_frame(void)
 
         hidden = (instance->flags & 0x800) != 0;
 
-        printf("[rewraithed] QoLs: Underworld %s %s\n", instance->object->name, shown ? "shown" : "hidden");
+        printf("[rewraithed] QoLs: Underworld %s %s, at (%d, %d, %d)\n", instance->object->name, shown ? "shown" : "hidden",
+            instance->position.x, instance->position.y, instance->position.z);
 
         if (shown && hidden)
         {
