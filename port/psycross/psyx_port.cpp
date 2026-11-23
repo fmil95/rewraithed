@@ -364,6 +364,11 @@ static void keep_shown_frame(void)
     {
         glBindTexture(GL_TEXTURE_2D, shownTex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        /* drawn back at its own size (draw_shown_frame) */
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glBindTexture(GL_TEXTURE_2D, 0);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, shownFbo);
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, shownTex, 0);
@@ -379,6 +384,127 @@ static void keep_shown_frame(void)
     glBindFramebuffer(GL_READ_FRAMEBUFFER, readFbo);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFbo);
     shownValid = 1;
+}
+
+/* A multisampled window can't be blitted into: the kept frame is drawn
+ * into it as a textured quad instead, at full resolution. (The VRAM way,
+ * at PSX resolution, smeared it more with each frame the effect drew over
+ * it.) Returns 0 if the shader can't be made. */
+static int draw_shown_frame(void)
+{
+    static GLuint program;
+    static GLuint vao;
+    static GLuint vbo;
+    static int ready;
+    GLint oldProgram, oldVao, oldTexture, oldActive, oldBuffer, viewport[4];
+    GLboolean blend, depth, scissor, stencil, cull;
+
+    if (ready == 0)
+    {
+        static const char *vs_src =
+            "#version 140\n"
+            "in vec2 a_pos;\n"
+            "out vec2 v_uv;\n"
+            "void main()\n"
+            "{\n"
+            "    v_uv = vec2((a_pos.x + 1.0) * 0.5, (1.0 - a_pos.y) * 0.5);\n"
+            "    gl_Position = vec4(a_pos, 0.0, 1.0);\n"
+            "}\n";
+        static const char *fs_src =
+            "#version 140\n"
+            "in vec2 v_uv;\n"
+            "out vec4 o_color;\n"
+            "uniform sampler2D u_tex;\n"
+            "void main()\n"
+            "{\n"
+            "    o_color = vec4(texture(u_tex, v_uv).rgb, 1.0);\n"
+            "}\n";
+        static const float quad[] = { -1, -1, 1, -1, -1, 1, 1, 1 };
+        GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+        GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
+        GLint ok = 0;
+        GLint vao0 = 0;
+        GLint buf0 = 0;
+
+        glShaderSource(vs, 1, &vs_src, NULL);
+        glCompileShader(vs);
+        glShaderSource(fs, 1, &fs_src, NULL);
+        glCompileShader(fs);
+
+        program = glCreateProgram();
+        glAttachShader(program, vs);
+        glAttachShader(program, fs);
+        glBindAttribLocation(program, 0, "a_pos");
+        glLinkProgram(program);
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+        glGetProgramiv(program, GL_LINK_STATUS, &ok);
+
+        if (!ok)
+        {
+            ready = -1;
+            return 0;
+        }
+
+        glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao0);
+        glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &buf0);
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+        glBindVertexArray(vao0);
+        glBindBuffer(GL_ARRAY_BUFFER, buf0);
+        ready = 1;
+    }
+
+    if (ready < 0)
+    {
+        return 0;
+    }
+
+    glGetIntegerv(GL_CURRENT_PROGRAM, &oldProgram);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &oldVao);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &oldActive);
+    glActiveTexture(GL_TEXTURE0);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldTexture);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &oldBuffer);
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    blend = glIsEnabled(GL_BLEND);
+    depth = glIsEnabled(GL_DEPTH_TEST);
+    scissor = glIsEnabled(GL_SCISSOR_TEST);
+    stencil = glIsEnabled(GL_STENCIL_TEST);
+    cull = glIsEnabled(GL_CULL_FACE);
+
+    glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_STENCIL_TEST);
+    glDisable(GL_CULL_FACE);
+
+    glViewport(g_portViewX, g_portViewY, g_portViewW, g_portViewH);
+    glUseProgram(program);
+    glUniform1i(glGetUniformLocation(program, "u_tex"), 0);
+    glBindTexture(GL_TEXTURE_2D, shownTex);
+    glBindVertexArray(vao);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    glUseProgram(oldProgram);
+    glBindVertexArray(oldVao);
+    glBindBuffer(GL_ARRAY_BUFFER, oldBuffer);
+    glBindTexture(GL_TEXTURE_2D, oldTexture);
+    glActiveTexture(oldActive);
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+
+    if (blend) glEnable(GL_BLEND);
+    if (depth) glEnable(GL_DEPTH_TEST);
+    if (scissor) glEnable(GL_SCISSOR_TEST);
+    if (stencil) glEnable(GL_STENCIL_TEST);
+    if (cull) glEnable(GL_CULL_FACE);
+
+    return 1;
 }
 
 /* Puts the last frame shown back into the window's view. Returns 0 when
@@ -404,8 +530,12 @@ int PsyX_PortRestoreShownFrame(void)
 
     if (samples > 1)
     {
+        /* into the window (still bound for drawing) */
+        int drawn = draw_shown_frame();
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, readFbo);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFbo);
-        return 0;
+        return drawn;
     }
     glDisable(GL_SCISSOR_TEST);
 

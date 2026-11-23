@@ -386,7 +386,7 @@ static void build_ui(HWND hwnd)
         L"Writes what the game does to rewraithed.log next to the game, including the details of a crash, "
         L"and how textures are placed in video memory to vram.log. Useful when reporting problems.");
     y += 36;
-    nolb_label = yes_no_row(hwnd, L"Disable Cutscene Letterbox", 336, y, 144, 484, ID_NOLB_YES,
+    nolb_label = yes_no_row(hwnd, L"Disable Cutscene Bars", 336, y, 144, 484, ID_NOLB_YES,
         L"Leaves out the black bars at the top and bottom of the screen during cutscenes, "
         L"so they fill the 4:3 picture. Only with Pillarboxing.");
     y += 36;
