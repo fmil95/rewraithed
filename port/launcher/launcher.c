@@ -27,7 +27,7 @@ enum
     ID_VSYNC_YES, ID_VSYNC_NO, ID_PILLAR_YES, ID_PILLAR_NO, ID_PGXP_YES, ID_PGXP_NO,
     ID_FILTERING, ID_AA, ID_AREA,
     ID_SKIP, ID_DITHER, ID_PRELOAD_YES, ID_PRELOAD_NO, ID_DEBUG_YES, ID_DEBUG_NO,
-    ID_LOG_YES, ID_LOG_NO, ID_DISCORD_YES, ID_DISCORD_NO, ID_DC_YES, ID_DC_NO, ID_PROTO_YES, ID_PROTO_NO, ID_PCMOV_YES, ID_PCMOV_NO, ID_FPS, ID_CONTROLS, ID_JOYSTICK,
+    ID_LOG_YES, ID_LOG_NO, ID_DISCORD_YES, ID_DISCORD_NO, ID_DC_YES, ID_DC_NO, ID_PROTO_YES, ID_PROTO_NO, ID_PCMOV_YES, ID_PCMOV_NO, ID_NOLB_YES, ID_NOLB_NO, ID_FPS, ID_CONTROLS, ID_JOYSTICK,
     ID_PARAMS, ID_PLAY, ID_SAVE,
 };
 
@@ -307,6 +307,18 @@ static int area_list_width(HWND parent)
     return MulDiv(widest + GetSystemMetrics(SM_CXVSCROLL), 96, dpi) + 14;
 }
 
+/* Disable Cutscene Letterboxing: only with Pillarboxing */
+static HWND nolb_label;
+
+static void update_letterbox_option(void)
+{
+    BOOL on = yes_no_get(ID_PILLAR_YES);
+
+    EnableWindow(nolb_label, on);
+    EnableWindow(GetDlgItem(main_window, ID_NOLB_YES), on);
+    EnableWindow(GetDlgItem(main_window, ID_NOLB_NO), on);
+}
+
 static void build_ui(HWND hwnd)
 {
     HWND lbl;
@@ -351,42 +363,46 @@ static void build_ui(HWND hwnd)
     y += 36;
     combo_row(hwnd, L"Antialiasing", 24, y, 96, 124, 176, ID_AA,
         L"Smooths the jagged edges of polygons. Higher values look smoother but need a faster graphics card.");
+    y += 36;
+    combo_row(hwnd, L"FPS Limit", 24, y, 96, 124, 176, ID_FPS,
+        L"How many frames a second the game runs at. 30 is the original rate of the game, 60 is smoother.");
 
     /* --- right: game --- */
     control(hwnd, L"BUTTON", L"Game", BS_GROUPBOX, 324, 18, 316, 398, 0);
 
     y = 42;
-    combo_row(hwnd, L"Skip Intros", 336, y, 120, 460, 168, ID_SKIP,
+    combo_row(hwnd, L"Skip Intros", 336, y, 144, 484, 144, ID_SKIP,
         L"Skip to Menu leaves out the logos and goes to the main menu. "
         L"Skip to Game also leaves out the menu and starts the game right away.");
     y += 36;
-    combo_row(hwnd, L"Dithering", 336, y, 120, 460, 168, ID_DITHER,
+    combo_row(hwnd, L"Dithering", 336, y, 144, 484, 144, ID_DITHER,
         L"The PlayStation's dot pattern that hides color banding. Off gives smoother colors, On looks like the original.");
     y += 36;
-    yes_no_row(hwnd, L"Enable Debug Menu", 336, y, 120, 460, ID_DEBUG_YES,
+    yes_no_row(hwnd, L"Enable Debug Menu", 336, y, 144, 484, ID_DEBUG_YES,
         L"Opens the game's debug menu. In game, press Backspace, or Attack and Feed at the same time.");
     y += 36;
-    yes_no_row(hwnd, L"Enable Logging", 336, y, 120, 460, ID_LOG_YES,
+    yes_no_row(hwnd, L"Enable Logging", 336, y, 144, 484, ID_LOG_YES,
         L"Writes what the game does to rewraithed.log next to the game, including the details of a crash, "
         L"and how textures are placed in video memory to vram.log. Useful when reporting problems.");
     y += 36;
-    yes_no_row(hwnd, L"Discord Rich Presence", 336, y, 120, 460, ID_DISCORD_YES,
+    nolb_label = yes_no_row(hwnd, L"Disable Cutscene Letterbox", 336, y, 144, 484, ID_NOLB_YES,
+        L"Leaves out the black bars at the top and bottom of the screen during cutscenes, "
+        L"so they fill the 4:3 picture. Only with Pillarboxing.");
+    y += 36;
+    yes_no_row(hwnd, L"Discord Rich Presence", 336, y, 144, 484, ID_DISCORD_YES,
         L"Shows on your Discord profile that you are playing Rewraithed, with the area you are in and the realm. "
         L"Needs the Discord app running on this PC.");
     y += 36;
-    combo_row(hwnd, L"FPS Limit", 336, y, 120, 460, 168, ID_FPS,
-        L"How many frames a second the game runs at. 30 is the original rate of the game, 60 is smoother.");
-    y += 36;
-    yes_no_row(hwnd, L"Use PC Movies", 336, y, 120, 460, ID_PCMOV_YES,
+    yes_no_row(hwnd, L"Use PC Movies", 336, y, 144, 484, ID_PCMOV_YES,
         L"Plays the movies of the 1999 PC version instead of the PlayStation ones. "
         L"Needs the .rpl files from your PC disc, or an image of that disc, in the movies folder next to the game.");
     y += 36;
-    yes_no_row(hwnd, L"Use DC Models", 336, y, 120, 460, ID_DC_YES,
+    yes_no_row(hwnd, L"Use DC Models", 336, y, 144, 484, ID_DC_YES,
         L"Draws Raziel and Kain with their more detailed models from the Dreamcast version. "
         L"Needs your own dump of the Dreamcast disc (the .gdi file and its track files) "
         L"in the dreamcast folder next to the game.");
     y += 36;
-    yes_no_row(hwnd, L"Use Proto Assets", 336, y, 120, 460, ID_PROTO_YES,
+    yes_no_row(hwnd, L"Use Proto Assets", 336, y, 144, 484, ID_PROTO_YES,
         L"Uses assets from the April 14, 1999 prototype that the July build lacks: the Spirit Glyph's own icon "
         L"(with -uncut). Needs your own image of that prototype's disc in the proto folder next to the game.");
 
@@ -533,6 +549,8 @@ static void show_settings(void)
     combo_set(ID_RENDERER, 0);
     yes_no_set(ID_VSYNC_YES, settings.vsync);
     yes_no_set(ID_PILLAR_YES, settings.pillarbox);
+    yes_no_set(ID_NOLB_YES, settings.noLetterbox);
+    update_letterbox_option();
     combo_set(ID_FILTERING, settings.filtering ? 1 : 0);
     yes_no_set(ID_PGXP_YES, settings.pgxp);
 
@@ -601,6 +619,7 @@ static void read_settings(void)
     settings.scaleLinear = combo_get(ID_SCALING) == 1;
     settings.vsync = yes_no_get(ID_VSYNC_YES);
     settings.pillarbox = yes_no_get(ID_PILLAR_YES);
+    settings.noLetterbox = yes_no_get(ID_NOLB_YES);
     settings.filtering = combo_get(ID_FILTERING) == 1;
     settings.pgxp = yes_no_get(ID_PGXP_YES);
     settings.antialiasing = aa_values[combo_get(ID_AA)];
@@ -792,8 +811,17 @@ static LRESULT CALLBACK main_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             }
 
             yes_no_set(yesId, id == yesId);
+
+            if ((id == ID_PILLAR_YES) || (id == ID_PILLAR_NO))
+            {
+                update_letterbox_option();
+            }
+
             return 0;
         }
+        case ID_NOLB_YES: case ID_NOLB_NO:
+            yes_no_set(ID_NOLB_YES, id == ID_NOLB_YES);
+            return 0;
         case ID_CONTROLS:
             controls_dialog(hwnd, &settings, ui_font, dpi);
             return 0;

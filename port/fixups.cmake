@@ -871,3 +871,19 @@ game_fixup(Game/FX.c
     FIND    "        FX_SoulReaverWinding(FX_reaver_instance, primPool, ot, wcTransform);\n        FX_SoulReaverBlade(FX_reaver_instance, ot);\n"
     REPLACE "        extern unsigned int port_reaver_seed;\n        unsigned int next = rand();\n\n        srand(port_reaver_seed);\n        FX_SoulReaverWinding(FX_reaver_instance, primPool, ot, wcTransform);\n        FX_SoulReaverBlade(FX_reaver_instance, ot);\n        srand(next);\n"
 )
+
+# "Disable Cutscene Letterboxing" (port_no_letterbox, main_hooks.c): the
+# black bars over the top and bottom 30 lines while a cutscene plays
+# (GlobalSave->flags 0x1), and their fade in and out (wipe type 11), are
+# left out; the game still sets and clears the flag.
+game_fixup(Game/GAMELOOP.c
+    FIND    "void GAMELOOP_HandleScreenWipes(unsigned long **drawot)\n{\n"
+    REPLACE "int port_no_letterbox(void);\n\nvoid GAMELOOP_HandleScreenWipes(unsigned long **drawot)\n{\n")
+
+game_fixup(Game/GAMELOOP.c
+    FIND    "    if ((GlobalSave->flags & 0x1))\n    {\n        DRAW_FlatQuad(&gameTrackerX.wipeColor, 0, 0, 512, 0, 0, 30,"
+    REPLACE "    if ((GlobalSave->flags & 0x1) && !port_no_letterbox())\n    {\n        DRAW_FlatQuad(&gameTrackerX.wipeColor, 0, 0, 512, 0, 0, 30,")
+
+game_fixup(Game/GAMELOOP.c
+    FIND    "            DRAW_TranslucentQuad(0, 0, 512, 0, 0, 30, 512, 30, (short)temp, (short)temp, (short)temp, 2, primPool, drawot);\n            DRAW_TranslucentQuad(0, 210, 512, 210, 0, 240, 512, 240, (short)temp, (short)temp, (short)temp, 2, primPool, drawot);\n"
+    REPLACE "            if (!port_no_letterbox())\n            {\n                DRAW_TranslucentQuad(0, 0, 512, 0, 0, 30, 512, 30, (short)temp, (short)temp, (short)temp, 2, primPool, drawot);\n                DRAW_TranslucentQuad(0, 210, 512, 210, 0, 240, 512, 240, (short)temp, (short)temp, (short)temp, 2, primPool, drawot);\n            }\n")

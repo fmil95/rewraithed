@@ -293,6 +293,7 @@ int port_settings_load(PortSettings *s, const char *path)
         else if (_stricmp(key, "Scaling") == 0)         s->scaleLinear = _stricmp(value, "Nearest") != 0;
         else if (_stricmp(key, "VSync") == 0)           s->vsync = yes(value);
         else if (_stricmp(key, "Pillarboxing") == 0)    s->pillarbox = yes(value);
+        else if (_stricmp(key, "DisableLetterboxing") == 0) s->noLetterbox = yes(value);
         else if (_stricmp(key, "Filtering") == 0)       s->filtering = _stricmp(value, "Off") != 0;
         else if (_stricmp(key, "PGXP") == 0)            s->pgxp = yes(value);
         else if (_stricmp(key, "Antialiasing") == 0)    s->antialiasing = atoi(value);
@@ -355,6 +356,7 @@ int port_settings_save(const PortSettings *s, const char *path)
     fprintf(f, "Renderer=OpenGL\n");
     fprintf(f, "VSync=%s\n", s->vsync ? "Yes" : "No");
     fprintf(f, "Pillarboxing=%s\n", s->pillarbox ? "Yes" : "No");
+    fprintf(f, "DisableLetterboxing=%s\n", s->noLetterbox ? "Yes" : "No");
     fprintf(f, "Filtering=%s\n", s->filtering ? "Bilinear" : "Off");
     fprintf(f, "PGXP=%s\n", s->pgxp ? "Yes" : "No");
     fprintf(f, "Antialiasing=%d\n", s->antialiasing);
