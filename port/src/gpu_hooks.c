@@ -399,6 +399,14 @@ void port_DrawPrim(void *p)
 
 /* Debug: REWRAITHED_OTCHECK=1 logs packets whose first command byte is not a
  * drawing command PsyCross understands, before PsyCross parses them. */
+/* The buffer being drawn is read back into VRAM for polygons textured from
+ * it (port/psycross/psyx_port.cpp), except while the spectral death effect
+ * draws over the picture shown, which puts that picture in VRAM itself. */
+int port_feedback_allowed(void)
+{
+    return !port_drawing_over_shown;
+}
+
 static void port_check_ot(u_long *p)
 {
     static int frames;

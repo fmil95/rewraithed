@@ -907,3 +907,22 @@ game_fixup(Game/GAMELOOP.c
 game_fixup(Game/G2/ANIMG2.c
     FIND    "    if (elapsedTime > storedTime)\n    {\n        G2Anim_GetRootMotionOverInterval(anim, storedTime, elapsedTime, vector);\n    }\n"
     REPLACE "    if (elapsedTime > storedTime)\n    {\n        extern int port_fps_locked(void);\n\n        if (!port_fps_locked() && ((anim->section[0].interpInfo == NULL) || (anim->section[0].interpInfo->stateBlockList == NULL)))\n        {\n            G2SVector3 toNow;\n            G2SVector3 toStored;\n\n            G2Anim_GetRootMotionFromTimeForDuration(anim, 0, elapsedTime, &toNow);\n            G2Anim_GetRootMotionFromTimeForDuration(anim, 0, storedTime, &toStored);\n\n            vector->x = toNow.x - toStored.x;\n            vector->y = toNow.y - toStored.y;\n            vector->z = toNow.z - toStored.z;\n        }\n        else\n        {\n            G2Anim_GetRootMotionOverInterval(anim, storedTime, elapsedTime, vector);\n        }\n    }\n")
+
+# Paused, GAMELOOP_DrawSavedOT redraws the saved frame and flips bit 4 of
+# each polygon's texture page with the draw page (the PSX's two display
+# buffers sit in different halves of VRAM). A Dreamcast model's texture
+# page (bit 15, the port's texture number in the low bits: dc_models.c)
+# then named another texture, or none, and VRAM's (the font) was drawn on
+# Raziel every other frame. Those pages are left alone.
+game_fixup(Game/GAMELOOP.c
+    FIND    "            if ((tpage & 0xF) < 8)\n"
+    REPLACE "            if (((tpage & 0xF) < 8) && !(tpage & 0x8000))\n")
+
+# Polygons textured from the buffer being drawn (the see-through urn Raziel
+# aims to throw is drawn as the picture behind it): on the first such
+# polygon of a frame, what is collected so far is drawn and the window is
+# copied into that buffer's place in VRAM (port/psycross/psyx_port.cpp,
+# PsyX_PortReadsDrawBuffer), and the rest of the frame reads it from there.
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "static void AddSplit(bool semiTrans, bool textured)\n{\n\tint tpage = activeDrawEnv.tpage;\n"
+    REPLACE "extern \"C\" int PsyX_PortReadsDrawBuffer(int tpage, const RECT16 *clip);\nextern \"C\" void PsyX_PortStoreWindowToVRAM(int x, int y, int w, int h);\nvoid DrawAllSplits();\nvoid GR_UpdateVRAM();\n\nstatic void AddSplit(bool semiTrans, bool textured)\n{\n\tif (textured && !g_DrawPrimMode && PsyX_PortReadsDrawBuffer(activeDrawEnv.tpage, &activeDrawEnv.clip))\n\t{\n\t\tGPUDrawSplit& lastSplit = g_splits[g_splitIndex];\n\t\tlastSplit.numVerts = g_vertexIndex - lastSplit.startVertex;\n\n\t\tDrawAllSplits();\n\t\tPsyX_PortStoreWindowToVRAM(activeDrawEnv.clip.x, activeDrawEnv.clip.y, activeDrawEnv.clip.w, activeDrawEnv.clip.h);\n\t\tGR_UpdateVRAM();\n\t}\n\n\tint tpage = activeDrawEnv.tpage;\n")

@@ -555,8 +555,106 @@ int PsyX_PortRestoreShownFrame(void)
     return 1;
 }
 
+static void store_fbo_to_vram(GLuint srcFbo, int srcW, int srcH, int x, int y, int w, int h);
+
 /* Writes the last frame shown into VRAM at (x, y, w, h), scaled to it. */
 void PsyX_PortStoreShownFrame(int x, int y, int w, int h)
+{
+    if (!shownValid)
+    {
+        return;
+    }
+
+    store_fbo_to_vram(shownFbo, shownW, shownH, x, y, w, h);
+}
+
+/* --- textures read from the buffer being drawn ------------------------------
+ * On PSX the frame is drawn into VRAM, so a polygon can be textured with
+ * what is already drawn: the game draws a see-through object (the urn
+ * Raziel aims to throw) as the picture behind it, then adds the object's
+ * texture. PsyCross draws all of a frame's polygons into the window at the
+ * end, and its VRAM never holds the frame. So on the first polygon of a
+ * frame textured from the draw buffer (PsyX_GPU.cpp, AddSplit), what is
+ * collected so far is drawn, and the window is copied into the draw
+ * buffer's place in VRAM (PsyX_PortStoreWindowToVRAM) for the rest. */
+static int feedbackDone;    /* this frame */
+
+extern "C" int port_feedback_allowed(void);     /* port/src/gpu_hooks.c */
+
+int PsyX_PortReadsDrawBuffer(int tpage, const RECT16 *clip)
+{
+    int px = (tpage & 0xF) * 64;
+    int py = ((tpage >> 4) & 1) * 256;
+
+    if (feedbackDone || (tpage & 0x8000) || (((tpage >> 7) & 3) != 2) || !port_feedback_allowed())
+    {
+        return 0;
+    }
+
+    /* the 256 x 256 texture page overlaps the area being drawn */
+    if ((px >= clip->x + clip->w) || (px + 256 <= clip->x) || (py >= clip->y + clip->h) || (py + 256 <= clip->y))
+    {
+        return 0;
+    }
+
+    feedbackDone = 1;
+    return 1;
+}
+
+void PsyX_PortStoreWindowToVRAM(int x, int y, int w, int h)
+{
+    static GLuint fbo;
+    static GLuint tex;
+    static int texW, texH;
+    GLint readFbo = 0;
+    GLint drawFbo = 0;
+    int vw = g_portViewW;
+    int vh = g_portViewH;
+
+    if ((vw <= 0) || (vh <= 0))
+    {
+        return;
+    }
+
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFbo);
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFbo);
+
+    if (fbo == 0)
+    {
+        glGenFramebuffers(1, &fbo);
+        glGenTextures(1, &tex);
+    }
+
+    if ((texW != vw) || (texH != vh))
+    {
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, vw, vh, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
+        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+        texW = vw;
+        texH = vh;
+    }
+
+    /* resolved if multisampled; flipped, first row at the top */
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
+    PsyX_PortBlitFromWindow(0, 0, vw, vh);
+
+    store_fbo_to_vram(fbo, vw, vh, x, y, w, h);
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFbo);
+}
+
+/* a new frame: the next one may need it again (PsyX_PortAfterSwap) */
+static void feedback_new_frame(void)
+{
+    feedbackDone = 0;
+}
+
+/* srcW x srcH of srcFbo (first row the top of the picture) into VRAM at
+ * (x, y, w, h), scaled to it */
+static void store_fbo_to_vram(GLuint srcFbo, int srcW, int srcH, int x, int y, int w, int h)
 {
     static GLuint fbo;
     static GLuint tex;
@@ -566,7 +664,7 @@ void PsyX_PortStoreShownFrame(int x, int y, int w, int h)
     GLint packAlign = 4;
     unsigned int *pixels;
 
-    if (!shownValid || (x < 0) || (y < 0) || (w <= 0) || (h <= 0) || (x + w > 1024) || (y + h > 512))
+    if ((x < 0) || (y < 0) || (w <= 0) || (h <= 0) || (x + w > 1024) || (y + h > 512))
     {
         return;
     }
@@ -592,9 +690,9 @@ void PsyX_PortStoreShownFrame(int x, int y, int w, int h)
     }
 
     /* scaled down; rows stay top first, as in VRAM */
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, shownFbo);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, srcFbo);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
-    glBlitFramebuffer(0, 0, shownW, shownH, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    glBlitFramebuffer(0, 0, srcW, srcH, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_LINEAR);
 
     pixels = (unsigned int *)malloc((size_t)w * h * 4);
 
@@ -650,6 +748,8 @@ void PsyX_PortAfterSwap(void)
     double ms;
     double refresh = 1000.0 / 60.0;
     SDL_DisplayMode mode;
+
+    feedback_new_frame();
 
     if (enabled < 0)
     {
