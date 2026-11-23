@@ -780,6 +780,31 @@ int port_game_ticks(long *accumulator)
     return (ticks > 4) ? 4 : ticks;
 }
 
+/* a per-frame step (look and aim with the stick or keys, RAZIEL_TurnHead)
+ * scaled to game time, so it turns as fast at 60 FPS as at 30; what is
+ * left below a whole unit is kept in rest for the next frame */
+int port_game_step(int value, long *rest)
+{
+    extern GameTracker gameTrackerX;
+    int step;
+
+    if (port_fps_locked() || (port_fps_target() <= 0))
+    {
+        return value;
+    }
+
+    *rest += (long)value * (long)gameTrackerX.timeMult;
+    step = (int)(*rest / 4096);
+    *rest -= (long)step * 4096;
+
+    return step;
+}
+
+/* the Soul Reaver's lightning (FX_SoulReaverWinding) is drawn with this
+ * seed, renewed on each 30-per-second tick of the blade (_SoulReaverAnimate),
+ * so its flicker keeps the PlayStation's pace at 60 FPS */
+unsigned int port_reaver_seed;
+
 int port_hud_ticks(void)
 {
     return port_ticks30;

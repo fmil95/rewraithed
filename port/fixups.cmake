@@ -839,3 +839,35 @@ game_fixup(Game/PHYSOBS.c
 psycross_fixup(render/PsyX_render.cpp
     FIND    "void GR_InitRG8LUT()\n"
     REPLACE "extern \"C\" void PsyX_PortRebuildShaders(void)\n{\n\tglUseProgram(0);\n\tg_PreviousShader = -1;\n\tg_lastBoundTexture = 0;\n\n\tglDeleteProgram(g_gpu_shader_4.shader);\n\tglDeleteProgram(g_gpu_shader_8.shader);\n\tglDeleteProgram(g_gpu_shader_16.shader);\n\tglDeleteProgram(g_gpu_shader_32_rgba.shader);\n\n\tGR_InitialisePSXShaders();\n}\n\nvoid GR_InitRG8LUT()\n")
+
+# 60 FPS: looking around and aiming with the stick or keys turns a fixed
+# amount each frame (RAZIEL_TurnHead); scaled to game time (port_game_step,
+# gpu_hooks.c). The mouse turns by its own movement (input_hooks.c).
+game_fixup(Game/RAZIEL/RAZIEL.c
+    FIND    "void port_mouse_look(short *rotx, short *rotz);\n"
+    REPLACE "void port_mouse_look(short *rotx, short *rotz);\nint port_game_step(int value, long *rest);\nstatic long port_look_rest[2];\n")
+
+game_fixup(Game/RAZIEL/RAZIEL.c
+    FIND    "        *rotx += gameTrackerX.controlData[0][4] / 8;\n        *rotz -= gameTrackerX.controlData[0][3] / 6;\n"
+    REPLACE "        *rotx += port_game_step(gameTrackerX.controlData[0][4] / 8, &port_look_rest[0]);\n        *rotz -= port_game_step(gameTrackerX.controlData[0][3] / 6, &port_look_rest[1]);\n")
+
+game_fixup(Game/RAZIEL/RAZIEL.c
+    FIND    "        *rotx += gameTrackerX.controlData[0][4] / 4;\n        *rotz -= gameTrackerX.controlData[0][3] / 3;\n"
+    REPLACE "        *rotx += port_game_step(gameTrackerX.controlData[0][4] / 4, &port_look_rest[0]);\n        *rotz -= port_game_step(gameTrackerX.controlData[0][3] / 3, &port_look_rest[1]);\n")
+
+# 60 FPS: the Soul Reaver spins, grows and changes size a step each frame
+# (_SoulReaverAnimate); stepped on 30-per-second ticks of game time instead
+# (port_game_ticks), and its lightning keeps one random shape between
+# ticks (port_reaver_seed), as the arm's rings flickered twice as fast.
+game_fixup(Game/REAVER.c
+    FIND    "    FX_SetReaverInstance(instance);\n\n    data->ReaverDeg += 256 + (rand() & 31);\n"
+    REPLACE "    FX_SetReaverInstance(instance);\n\n    {\n    extern int port_game_ticks(long *accumulator);\n    extern unsigned int port_reaver_seed;\n    static long reaverTicks;\n    int ticks = port_game_ticks(&reaverTicks);\n\n    if (ticks > 0)\n    {\n        port_reaver_seed = rand();\n    }\n\n    while (ticks-- > 0)\n    {\n    data->ReaverDeg += 256 + (rand() & 31);\n")
+
+game_fixup(Game/REAVER.c
+    FIND    "    if (((unsigned char)data->ReaverOn == 1) && (data->ReaverScale > 0))\n"
+    REPLACE "    }\n    }\n\n    if (((unsigned char)data->ReaverOn == 1) && (data->ReaverScale > 0))\n")
+
+game_fixup(Game/FX.c
+    FIND    "        FX_SoulReaverWinding(FX_reaver_instance, primPool, ot, wcTransform);\n        FX_SoulReaverBlade(FX_reaver_instance, ot);\n"
+    REPLACE "        extern unsigned int port_reaver_seed;\n        unsigned int next = rand();\n\n        srand(port_reaver_seed);\n        FX_SoulReaverWinding(FX_reaver_instance, primPool, ot, wcTransform);\n        FX_SoulReaverBlade(FX_reaver_instance, ot);\n        srand(next);\n"
+)
