@@ -1,5 +1,7 @@
 # Rewraithed
 
+<img src="https://i.imgur.com/DiWnBJA.png"/> 
+
 # Description
 
 ***Rewraithed*** is a work-in-progress PC port of Soul Reaver which aspires to eventually become a Deleted Scenes rendition of the game, featuring an extra "Uncut" mode where you'll get to experience the story closer to how it was originally envisioned with all planned reavers, glyphs, forges, boss fights, and more content that was excised from the game's development cycle, including the original ending. This will be achieved via performing extensive research into the aforementioned content, and by providing a competent software development kit with a full-featured level editor capable of modifying any aspect of the game world.
