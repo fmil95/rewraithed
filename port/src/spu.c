@@ -75,19 +75,23 @@ extern unsigned int port_rc1_ticks;
 static const int adpcm_pos[5] = { 0, 60, 115, 98, 122 };
 static const int adpcm_neg[5] = { 0, 0, -52, -55, -60 };
 
+/* the mixer's state, between the game and the output thread (SDL's, or
+ * the exclusive one: native/wasapi_exclusive.cpp) */
+static SDL_mutex *spu_mutex;
+
 static void spu_lock(void)
 {
-    if (spu_device != 0)
+    if (spu_mutex != NULL)
     {
-        SDL_LockAudioDevice(spu_device);
+        SDL_LockMutex(spu_mutex);
     }
 }
 
 static void spu_unlock(void)
 {
-    if (spu_device != 0)
+    if (spu_mutex != NULL)
     {
-        SDL_UnlockAudioDevice(spu_device);
+        SDL_UnlockMutex(spu_mutex);
     }
 }
 
@@ -842,7 +846,16 @@ static void wav_write(const short *samples, int bytes)
     }
 }
 
+static void spu_mix(void *user, Uint8 *stream, int len);
+
 static void SDLCALL spu_callback(void *user, Uint8 *stream, int len)
+{
+    spu_lock();
+    spu_mix(user, stream, len);
+    spu_unlock();
+}
+
+static void spu_mix(void *user, Uint8 *stream, int len)
 {
     static int mix[OUT_SAMPLES * 4 * 2];
     static int rmix[OUT_SAMPLES * 4 * 2];
@@ -921,6 +934,11 @@ static void spu_open_device(void)
         return;
     }
 
+    if (spu_mutex == NULL)
+    {
+        spu_mutex = SDL_CreateMutex();
+    }
+
     if (!SDL_WasInit(SDL_INIT_AUDIO) && (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0))
     {
         fprintf(stderr, "[rewraithed] spu: no audio (%s)\n", SDL_GetError());
@@ -942,7 +960,7 @@ static void spu_open_device(void)
         return;
     }
 
-    if (getenv("REWRAITHED_WAV") != NULL)
+    if ((getenv("REWRAITHED_WAV") != NULL) && (spu_wav == NULL))
     {
         spu_wav = fopen(getenv("REWRAITHED_WAV"), "wb");
 
@@ -956,6 +974,72 @@ static void spu_open_device(void)
 }
 
 /* --- libspu -------------------------------------------------------------- */
+
+/* --- exclusive output ------------------------------------------------------ */
+
+int port_excl_start(void (*fill)(short *out, int frames), int srcRate);  /* native/wasapi_exclusive.cpp */
+void port_excl_stop(void);
+int port_excl_dead(void);
+
+static int spu_exclusive;
+static int spu_exclusiveFailed;
+
+static void spu_exclusive_fill(short *out, int frames)
+{
+    spu_lock();
+    spu_mix(NULL, (Uint8 *)out, frames * 4);
+    spu_unlock();
+}
+
+/* Fullscreen and active (focus_pause.c, each frame): the sound takes the
+ * audio device for itself, so other programs' sounds (chat notifications,
+ * system sounds) don't play over the game; otherwise, and if the device
+ * won't, the shared output through SDL. SDL's device must be closed for
+ * the exclusive one to open. */
+void port_spu_exclusive(int want)
+{
+    if (spu_exclusive && port_excl_dead())
+    {
+        printf("[rewraithed] exclusive audio stopped: shared output\n");
+        port_excl_stop();
+        spu_exclusive = 0;
+        spu_exclusiveFailed = 1;
+        spu_open_device();
+        return;
+    }
+
+    if (want == spu_exclusive)
+    {
+        return;
+    }
+
+    if (want)
+    {
+        if (spu_exclusiveFailed || (spu_device == 0))
+        {
+            return;
+        }
+
+        SDL_CloseAudioDevice(spu_device);
+        spu_device = 0;
+
+        if (port_excl_start(spu_exclusive_fill, OUT_RATE))
+        {
+            spu_exclusive = 1;
+            return;
+        }
+
+        /* not this time, nor later: back to SDL */
+        spu_exclusiveFailed = 1;
+        spu_open_device();
+    }
+    else
+    {
+        port_excl_stop();
+        spu_exclusive = 0;
+        spu_open_device();
+    }
+}
 
 /* the window is hidden (focus_pause.c): no sound until it is back */
 void port_spu_pause(int pause)

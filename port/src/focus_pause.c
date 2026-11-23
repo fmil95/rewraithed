@@ -20,6 +20,7 @@
 
 extern unsigned int PsyX_PortWindowFlags(void);  /* port/psycross/psyx_port.cpp */
 void port_spu_pause(int pause);                   /* spu.c */
+void port_spu_exclusive(int want);                /* spu.c */
 
 static volatile int paused;
 
@@ -59,12 +60,26 @@ static int window_hidden(void)
     return (port_settings.display != DISPLAY_WINDOWED) && !(flags & SDL_WINDOW_INPUT_FOCUS);
 }
 
+/* fullscreen and active: the sound takes the audio device for itself, so
+ * other programs' sounds don't play over the game (spu.c) */
+static int wants_exclusive_audio(void)
+{
+    unsigned int flags = PsyX_PortWindowFlags();
+
+    return (port_settings.display == DISPLAY_FULLSCREEN) && (flags & SDL_WINDOW_INPUT_FOCUS) &&
+        !(flags & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_HIDDEN));
+}
+
 void port_focus_check(void)
 {
+    port_spu_exclusive(wants_exclusive_audio());
+
     if (!window_hidden())
     {
         return;
     }
+
+    port_spu_exclusive(0);
 
     printf("[rewraithed] window hidden: paused\n");
 

@@ -626,6 +626,14 @@ int port_pc_movie_play(const char *strfile, unsigned short mask)
         want.channels = 2;
         want.samples = 1024;
 
+        /* the game's exclusive output (spu.c) holds the device: shared
+         * output for the movie; the next frame takes it back */
+        {
+            extern void port_spu_exclusive(int want);
+
+            port_spu_exclusive(0);
+        }
+
         SDL_InitSubSystem(SDL_INIT_AUDIO);
         dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
 

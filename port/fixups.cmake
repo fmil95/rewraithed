@@ -887,3 +887,11 @@ game_fixup(Game/GAMELOOP.c
 game_fixup(Game/GAMELOOP.c
     FIND    "            DRAW_TranslucentQuad(0, 0, 512, 0, 0, 30, 512, 30, (short)temp, (short)temp, (short)temp, 2, primPool, drawot);\n            DRAW_TranslucentQuad(0, 210, 512, 210, 0, 240, 512, 240, (short)temp, (short)temp, (short)temp, 2, primPool, drawot);\n"
     REPLACE "            if (!port_no_letterbox())\n            {\n                DRAW_TranslucentQuad(0, 0, 512, 0, 0, 30, 512, 30, (short)temp, (short)temp, (short)temp, 2, primPool, drawot);\n                DRAW_TranslucentQuad(0, 210, 512, 210, 0, 240, 512, 240, (short)temp, (short)temp, (short)temp, 2, primPool, drawot);\n            }\n")
+
+# The debug menu's key (Square + Circle, or Backspace) while the pause menu
+# is up went straight back to running in the middle of the paused frame,
+# whose saved display list was then drawn without end: the window froze.
+# It does nothing there now (port_debug_key_pressed still runs each frame).
+game_fixup(Game/GAMELOOP.c
+    FIND    "        if ((((controlCommand[1] & 0x60) == 0x60) && (!(controlCommand[0] & 0xF))) || port_debug_key_pressed())\n"
+    REPLACE "        if (((((controlCommand[1] & 0x60) == 0x60) && (!(controlCommand[0] & 0xF))) || port_debug_key_pressed()) && (gameTrackerX.gameMode != 6))\n")
