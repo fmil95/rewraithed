@@ -10,6 +10,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <SDL.h>
 
@@ -25,6 +26,9 @@ static GLuint rgb_vao;
 static GLuint rgb_vbo;
 static GLuint rgb_texture;
 static int rgb_ready;
+
+/* a picture given directly (port_present_rgb_frame), not read from VRAM */
+static const unsigned char *frame_rgb;
 
 static const char *vertex_src =
     "#version 140\n"
@@ -160,7 +164,20 @@ void port_present_rgb24(int x, int y, int w, int h)
         int vw;
         int vh;
 
-        GR_ReadVRAM(packed, x, y, halfwords, h);
+        if (frame_rgb != NULL)
+        {
+            int row;
+
+            /* rows of w * 3 bytes, laid out as GR_ReadVRAM would */
+            for (row = 0; row < h; row++)
+            {
+                memcpy((unsigned char *)packed + (size_t)row * halfwords * 2, frame_rgb + (size_t)row * w * 3, (size_t)w * 3);
+            }
+        }
+        else
+        {
+            GR_ReadVRAM(packed, x, y, halfwords, h);
+        }
 
         glBindTexture(GL_TEXTURE_2D, rgb_texture);
         /* each frame: F4 changes "Scaling" while playing (video_hotkeys.c) */
@@ -210,5 +227,16 @@ void port_present_rgb24(int x, int y, int w, int h)
 
 void port_swap_window(void)
 {
+    GR_SwapWindow();
+}
+
+/* Shows a w x h picture of 8-bit R, G, B bytes (the PC movies, pc_movies.c),
+ * as the 24-bit display mode is shown, then presents. */
+void port_present_rgb_frame(const unsigned char *rgb, int w, int h)
+{
+    frame_rgb = rgb;
+    port_present_rgb24(0, 0, (rgb != NULL) ? w : 0, h);
+    frame_rgb = NULL;
+
     GR_SwapWindow();
 }

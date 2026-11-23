@@ -14,6 +14,7 @@
 #include "settings.h"
 #include "dc_disc.h"
 #include "proto_disc.h"
+#include "pc_disc.h"
 #include "areas.h"
 #include "controls.h"
 #include "joystick.h"
@@ -26,7 +27,7 @@ enum
     ID_VSYNC_YES, ID_VSYNC_NO, ID_PILLAR_YES, ID_PILLAR_NO, ID_PGXP_YES, ID_PGXP_NO,
     ID_FILTERING, ID_AA, ID_AREA,
     ID_SKIP, ID_DITHER, ID_PRELOAD_YES, ID_PRELOAD_NO, ID_DEBUG_YES, ID_DEBUG_NO,
-    ID_LOG_YES, ID_LOG_NO, ID_DISCORD_YES, ID_DISCORD_NO, ID_DC_YES, ID_DC_NO, ID_PROTO_YES, ID_PROTO_NO, ID_FPS, ID_CONTROLS, ID_JOYSTICK,
+    ID_LOG_YES, ID_LOG_NO, ID_DISCORD_YES, ID_DISCORD_NO, ID_DC_YES, ID_DC_NO, ID_PROTO_YES, ID_PROTO_NO, ID_PCMOV_YES, ID_PCMOV_NO, ID_FPS, ID_CONTROLS, ID_JOYSTICK,
     ID_PARAMS, ID_PLAY, ID_SAVE,
 };
 
@@ -376,6 +377,10 @@ static void build_ui(HWND hwnd)
     combo_row(hwnd, L"FPS Limit", 336, y, 120, 460, 168, ID_FPS,
         L"How many frames a second the game runs at. 30 is the original rate of the game, 60 is smoother.");
     y += 36;
+    yes_no_row(hwnd, L"Use PC Movies", 336, y, 120, 460, ID_PCMOV_YES,
+        L"Plays the movies of the 1999 PC version instead of the PlayStation ones. "
+        L"Needs the .rpl files from your PC disc, or an image of that disc, in the movies folder next to the game.");
+    y += 36;
     yes_no_row(hwnd, L"Use DC Models", 336, y, 120, 460, ID_DC_YES,
         L"Draws Raziel and Kain with their more detailed models from the Dreamcast version. "
         L"Needs your own dump of the Dreamcast disc (the .gdi file and its track files) "
@@ -386,10 +391,10 @@ static void build_ui(HWND hwnd)
         L"(with -uncut). Needs your own image of that prototype's disc in the proto folder next to the game.");
 
     /* last row of the box, just above the buttons */
-    y = 344;
-    lbl = label(hwnd, L"Controls", 336, y, 120);
-    control(hwnd, L"BUTTON", L"Keyboard and Mouse", BS_PUSHBUTTON | WS_TABSTOP, 460, y, 168, 26, ID_CONTROLS);
-    control(hwnd, L"BUTTON", L"Joystick", BS_PUSHBUTTON | WS_TABSTOP, 460, y + 36, 168, 26, ID_JOYSTICK);
+    y = 372;
+    lbl = label(hwnd, L"Controls", 336, y, 60);
+    control(hwnd, L"BUTTON", L"Keyboard and Mouse", BS_PUSHBUTTON | WS_TABSTOP, 404, y, 128, 26, ID_CONTROLS);
+    control(hwnd, L"BUTTON", L"Joystick", BS_PUSHBUTTON | WS_TABSTOP, 540, y, 88, 26, ID_JOYSTICK);
     tooltip(hwnd, GetDlgItem(hwnd, ID_JOYSTICK), L"Turn the joystick (a game controller) on or off, and choose its button for each action. The left stick also moves.");
     option_tip(hwnd, lbl, ID_CONTROLS, 0, L"Change the keys for each action, with an alternate key for each (the arrow keys also move), and the mouse buttons for attacking, telekinesis and aiming.");
 
@@ -562,6 +567,7 @@ static void show_settings(void)
 
     /* only on while the April disc is in the proto folder */
     yes_no_set(ID_PROTO_YES, settings.protoAssets && proto_disc_locate(NULL, 0, NULL, 0));
+    yes_no_set(ID_PCMOV_YES, settings.pcMovies && pc_disc_locate(NULL, 0));
 
     {
         wchar_t params[256];
@@ -610,6 +616,7 @@ static void read_settings(void)
     settings.discordPresence = yes_no_get(ID_DISCORD_YES);
     settings.dcModels = yes_no_get(ID_DC_YES);
     settings.protoAssets = yes_no_get(ID_PROTO_YES);
+    settings.pcMovies = yes_no_get(ID_PCMOV_YES);
     settings.fpsLimit = fps_values[combo_get(ID_FPS)];
 
     {
@@ -738,6 +745,36 @@ static LRESULT CALLBACK main_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         case ID_PROTO_NO:
             yes_no_set(ID_PROTO_YES, 0);
+            return 0;
+        case ID_PCMOV_YES:
+        {
+            char problem[700];
+            char folder[MAX_PATH];
+            wchar_t text[1200];
+            HCURSOR old = SetCursor(LoadCursor(NULL, IDC_WAIT));
+            int found = pc_disc_locate(problem, sizeof(problem));
+
+            SetCursor(old);
+
+            if (!found)
+            {
+                pc_disc_folder(folder, sizeof(folder));
+                CreateDirectoryA(folder, NULL);
+
+                swprintf(text, 1200,
+                    L"The PC movies are read from your own copy of the 1999 PC version of Soul Reaver.\n\n"
+                    L"Place the .rpl files from the root of its disc, or an image of the disc (.iso), in this folder:\n\n%hs\n\n"
+                    L"then choose Yes again.\n\n(%hs)", folder, problem);
+                MessageBoxW(hwnd, text, L"Use PC Movies", MB_ICONINFORMATION);
+                yes_no_set(ID_PCMOV_YES, 0);
+                return 0;
+            }
+
+            yes_no_set(ID_PCMOV_YES, 1);
+            return 0;
+        }
+        case ID_PCMOV_NO:
+            yes_no_set(ID_PCMOV_YES, 0);
             return 0;
         case ID_VSYNC_YES: case ID_VSYNC_NO:
         case ID_PILLAR_YES: case ID_PILLAR_NO:

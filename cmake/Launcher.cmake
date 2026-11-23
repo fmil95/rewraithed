@@ -12,6 +12,7 @@ add_executable(rewraithed-launcher WIN32
     "${PORT_DIR}/shared/settings.c"
     "${PORT_DIR}/shared/dc_disc.c"
     "${PORT_DIR}/shared/proto_disc.c"
+    "${PORT_DIR}/shared/pc_disc.c"
 )
 
 target_include_directories(rewraithed-launcher PRIVATE "${PORT_DIR}/shared" "${PORT_DIR}/launcher")

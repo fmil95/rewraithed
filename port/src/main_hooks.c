@@ -144,6 +144,16 @@ void CINE_Play(char *strfile, unsigned short mask, int buffers)
         return;
     }
 
+    /* "Use PC Movies": the PC version's, when it has this one (pc_movies.c) */
+    {
+        extern int port_pc_movie_play(const char *strfile, unsigned short mask);
+
+        if (port_pc_movie_play(strfile, mask))
+        {
+            return;
+        }
+    }
+
     CINE_Play_psx(strfile, mask, buffers);
 }
 

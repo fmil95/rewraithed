@@ -54,6 +54,8 @@ typedef struct
                                Dreamcast disc in the "dreamcast" folder */
     int protoAssets;        /* assets from the April 1999 prototype's disc
                                in the "proto" folder (the Spirit Glyph icon) */
+    int pcMovies;           /* the PC version's movies, from the movies
+                               folder (pc_disc.c) */
     char parameters[256];   /* extra command-line options (-uncut, ...) */
 
     /* keyboard: SDL scancode names; each button has a second, alternate key
