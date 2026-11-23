@@ -10,7 +10,10 @@
  *  F7   PGXP: on, off
  *  F8   Pillarboxing: on, off
  *  F9   Dithering: on, off
- *  F11  Dreamcast models: on, off (with the models imported)
+ *
+ * F11 (Dreamcast models on and off) is left out for now: switching them in
+ * the middle of a scene could crash (pillars1's cutscene) or corrupt
+ * textures. The launcher's Use DC Models still applies from the start.
  *
  * Each press moves to the next choice, for this session only: the launcher's
  * settings are not changed. PsyCross keeps F3 (texture filtering), F10 (VRAM
@@ -29,7 +32,6 @@ extern int g_cfg_pillarbox;
 extern int g_cfg_dithering;
 
 void PsyX_PortRebuildShaders(void);         /* PsyX_render.cpp (fixup) */
-void port_dc_set_enabled(int on);           /* dc_models.c */
 
 static const char *on_off(int on)
 {
@@ -75,11 +77,6 @@ void PsyX_PortVideoHotkey(int scancode)
         g_cfg_dithering = port_settings.dithering;
         PsyX_PortRebuildShaders();
         printf("[rewraithed] Dithering: %s\n", on_off(port_settings.dithering));
-        break;
-
-    case SDL_SCANCODE_F11:
-        port_dc_set_enabled(!port_settings.dcModels);
-        printf("[rewraithed] Dreamcast models: %s\n", on_off(port_settings.dcModels));
         break;
     }
 }

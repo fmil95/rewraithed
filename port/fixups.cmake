@@ -895,3 +895,15 @@ game_fixup(Game/GAMELOOP.c
 game_fixup(Game/GAMELOOP.c
     FIND    "        if ((((controlCommand[1] & 0x60) == 0x60) && (!(controlCommand[0] & 0xF))) || port_debug_key_pressed())\n"
     REPLACE "        if (((((controlCommand[1] & 0x60) == 0x60) && (!(controlCommand[0] & 0xF))) || port_debug_key_pressed()) && (gameTrackerX.gameMode != 6))\n")
+
+# 60 FPS: an animation's root motion (how far it moves its instance) came
+# frame by frame from G2Anim_GetRootMotionOverInterval, which rounds down
+# each part of a key it covers. At 30 FPS a frame is a whole key; at 60
+# each key is split in two and the rounding added up, so a pushed block
+# fell short and ResetOrientation snapped it onto the grid at the end
+# (a jump). Unlocked, each frame's motion is the difference of the motion
+# from the start of the animation to now and to the last frame, which adds
+# up to the same total as at 30 FPS. Not for interpolated blends.
+game_fixup(Game/G2/ANIMG2.c
+    FIND    "    if (elapsedTime > storedTime)\n    {\n        G2Anim_GetRootMotionOverInterval(anim, storedTime, elapsedTime, vector);\n    }\n"
+    REPLACE "    if (elapsedTime > storedTime)\n    {\n        extern int port_fps_locked(void);\n\n        if (!port_fps_locked() && ((anim->section[0].interpInfo == NULL) || (anim->section[0].interpInfo->stateBlockList == NULL)))\n        {\n            G2SVector3 toNow;\n            G2SVector3 toStored;\n\n            G2Anim_GetRootMotionFromTimeForDuration(anim, 0, elapsedTime, &toNow);\n            G2Anim_GetRootMotionFromTimeForDuration(anim, 0, storedTime, &toStored);\n\n            vector->x = toNow.x - toStored.x;\n            vector->y = toNow.y - toStored.y;\n            vector->z = toNow.z - toStored.z;\n        }\n        else\n        {\n            G2Anim_GetRootMotionOverInterval(anim, storedTime, elapsedTime, vector);\n        }\n    }\n")
