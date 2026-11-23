@@ -937,3 +937,15 @@ psycross_fixup(gpu/PsyX_GPU.cpp
 game_fixup(Game/DRAW.c
     FIND    "            gte_stotz(&otz);\n\n            if ((otz >= 64) && (otz < 3072))\n            {\n                gte_stsxy3(&sg3->x0, &sg3->x1, &sg3->x2);"
     REPLACE "            gte_stotz(&otz);\n\n            {\n                long z0, z1, z2;\n                long centreOtz;\n\n                gte_stsz3(&z0, &z1, &z2);\n\n                if ((z0 + z1 + z2) > 0)\n                {\n                    centreOtz = (otz * 3 * z0) / (z0 + z1 + z2);\n\n                    if (otz > centreOtz)\n                    {\n                        otz = centreOtz;\n                    }\n                }\n            }\n\n            if ((otz >= 64) && (otz < 3072))\n            {\n                gte_stsxy3(&sg3->x0, &sg3->x1, &sg3->x2);")
+
+# Seams with PGXP: each frame's opaque polygons are drawn as their edges
+# before being drawn as usual (port/psycross/psyx_port.cpp,
+# PsyX_PortEdgesFirst), so a pixel left between the two sides of a
+# T-junction shows the neighbouring edge, not the fog colour behind.
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "\tfor (int i = 1; i <= g_splitIndex; i++)\n\t\tDrawSplit(g_splits[i]);\n"
+    REPLACE "\tif (PsyX_PortEdgesFirst())\n\t{\n\t\tPsyX_PortLineMode(1);\n\n\t\tfor (int i = 1; i <= g_splitIndex; i++)\n\t\t{\n\t\t\tif (g_splits[i].blendMode == BM_NONE)\n\t\t\t\tDrawSplit(g_splits[i]);\n\t\t}\n\n\t\tPsyX_PortLineMode(0);\n\t}\n\n\tfor (int i = 1; i <= g_splitIndex; i++)\n\t\tDrawSplit(g_splits[i]);\n")
+
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "void DrawAllSplits()\n{\n"
+    REPLACE "extern \"C\" int PsyX_PortEdgesFirst(void);\nextern \"C\" void PsyX_PortLineMode(int lines);\n\nvoid DrawAllSplits()\n{\n")

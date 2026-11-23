@@ -725,6 +725,23 @@ static void store_fbo_to_vram(GLuint srcFbo, int srcW, int srcH, int x, int y, i
  * stay as they are. */
 int g_port_pgxp;    /* set by port/src/pc_main.c from the PGXP setting */
 
+/* Edges first (DrawAllSplits, PsyX_GPU.cpp): with PGXP, where the renderer
+ * split a polygon near the camera, the split side's edge has an extra
+ * corner the unsplit neighbour's edge lacks (a T-junction). At exact
+ * positions the two sides then cross the odd pixel centre differently, and
+ * the background, the fog colour, showed through: dotted lines along
+ * edges. Each frame's opaque polygons are first drawn as their edges, then
+ * as usual over them; a pixel no polygon covers keeps an edge's colour. */
+int PsyX_PortEdgesFirst(void)
+{
+    return g_port_pgxp;
+}
+
+void PsyX_PortLineMode(int lines)
+{
+    glPolygonMode(GL_FRONT_AND_BACK, lines ? GL_LINE : GL_FILL);
+}
+
 typedef struct
 {
     unsigned int key;
