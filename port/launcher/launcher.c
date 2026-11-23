@@ -18,6 +18,7 @@
 #include "areas.h"
 #include "controls.h"
 #include "joystick.h"
+#include "update.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
@@ -28,7 +29,7 @@ enum
     ID_FILTERING, ID_AA, ID_AREA,
     ID_SKIP, ID_DITHER, ID_PRELOAD_YES, ID_PRELOAD_NO, ID_DEBUG_YES, ID_DEBUG_NO,
     ID_LOG_YES, ID_LOG_NO, ID_DISCORD_YES, ID_DISCORD_NO, ID_DC_YES, ID_DC_NO, ID_PROTO_YES, ID_PROTO_NO, ID_PCMOV_YES, ID_PCMOV_NO, ID_NOLB_YES, ID_NOLB_NO, ID_FPS, ID_CONTROLS, ID_JOYSTICK,
-    ID_PARAMS, ID_PLAY, ID_SAVE,
+    ID_PARAMS, ID_PLAY, ID_UPDATE,
 };
 
 typedef struct { int w, h; } Resolution;
@@ -424,7 +425,7 @@ static void build_ui(HWND hwnd)
             L"Starts the game straight in the chosen area. Default starts where the disc does.");
 
         lbl = label(hwnd, L"Parameters", paramsX, 431, 64);
-        control(hwnd, L"EDIT", L"", ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP, paramsX + 66, 432, 496 - (paramsX + 66), 22, ID_PARAMS);
+        control(hwnd, L"EDIT", L"", ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP, paramsX + 66, 432, 480 - (paramsX + 66), 22, ID_PARAMS);
         SendDlgItemMessageW(hwnd, ID_PARAMS, EM_SETLIMITTEXT, sizeof(settings.parameters) - 1, 0);
         option_tip(hwnd, lbl, ID_PARAMS, 0,
             L"Extra options for the game, as on its command line, separated by spaces. For example: "
@@ -432,9 +433,13 @@ static void build_ui(HWND hwnd)
             L"-skipcutscene skips the cutscenes.");
     }
 
-    /* no Exit button: the window's close button does that */
-    control(hwnd, L"BUTTON", L"Play", BS_DEFPUSHBUTTON | WS_TABSTOP, 504, 428, 64, 30, ID_PLAY);
-    control(hwnd, L"BUTTON", L"Save", BS_PUSHBUTTON | WS_TABSTOP, 576, 428, 64, 30, ID_SAVE);
+    /* no Exit button: the window's close button does that; no Save button:
+     * each change is saved (main_proc) */
+    control(hwnd, L"BUTTON", L"Play", BS_DEFPUSHBUTTON | WS_TABSTOP, 488, 428, 64, 30, ID_PLAY);
+    control(hwnd, L"BUTTON", L"Update", BS_PUSHBUTTON | WS_TABSTOP, 560, 428, 80, 30, ID_UPDATE);
+    tooltip(hwnd, GetDlgItem(hwnd, ID_UPDATE),
+        L"Looks on GitHub for a newer version of Rewraithed, then downloads and installs it if you agree. "
+        L"It reads \"Update!\" when one is out.");
 
     /* --- lists --- */
     for (i = 0; i < COUNT(display_order); i++)
@@ -699,7 +704,64 @@ static int play(void)
     return 1;
 }
 
+/* set once the window shows the settings: until then, filling the controls
+ * must not save */
+static int ui_ready;
+
+/* each change of an option is saved at once; a failure is told once */
+static void autosave(void)
+{
+    static int warned;
+
+    read_settings();
+
+    if (!port_settings_save(&settings, ini_path) && !warned)
+    {
+        warned = 1;
+        MessageBoxW(main_window, L"Could not write rewraithed.ini next to the launcher.", L"Rewraithed", MB_ICONERROR);
+    }
+}
+
+static LRESULT CALLBACK main_proc_options(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
+
 static LRESULT CALLBACK main_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+{
+    LRESULT result;
+    int id = LOWORD(wp);
+    int code = HIWORD(wp);
+
+    if (msg == WM_APP_UPDATE)
+    {
+        if (wp)
+        {
+            SetDlgItemTextW(hwnd, ID_UPDATE, L"Update!");
+        }
+
+        return 0;
+    }
+
+    if ((msg == WM_COMMAND) && (id == ID_UPDATE))
+    {
+        if (update_run(hwnd))
+        {
+            DestroyWindow(hwnd);
+        }
+
+        return 0;
+    }
+
+    result = main_proc_options(hwnd, msg, wp, lp);
+
+    if ((msg == WM_COMMAND) && ui_ready && (id != ID_PLAY) && IsWindow(hwnd) &&
+        ((code == BN_CLICKED) || (code == CBN_SELCHANGE) || ((id == ID_PARAMS) && (code == EN_CHANGE))))
+    {
+        autosave();
+    }
+
+    return result;
+}
+
+static LRESULT CALLBACK main_proc_options(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     switch (msg)
     {
@@ -834,9 +896,6 @@ static LRESULT CALLBACK main_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 DestroyWindow(hwnd);
             }
             return 0;
-        case ID_SAVE:
-            save();
-            return 0;
         }
 
         break;
@@ -896,6 +955,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR cmd, int show)
 
     build_ui(main_window);
     show_settings();
+    ui_ready = 1;
+
+    update_cleanup();
+    update_check_async(main_window);
 
     ShowWindow(main_window, show);
     UpdateWindow(main_window);
