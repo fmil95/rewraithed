@@ -78,8 +78,14 @@ void port_mouse_look(short *rotx, short *rotz)
 
     mouse_look_frames = 2;
 
-    /* as the stick: right turns right, down looks down; what is left of a
-     * unit is kept for the next frame, so slow movements still turn */
+    /* right turns right; up looks up, or with Invert Aim Controls down, as
+     * the stick does. What is left of a unit is kept for the next frame, so
+     * slow movements still turn */
+    if (!port_settings.invertAim)
+    {
+        dy = -dy;
+    }
+
     mouse_look_rest_z += dx * MOUSE_LOOK_QUARTERS;
     mouse_look_rest_x += dy * MOUSE_LOOK_QUARTERS;
 

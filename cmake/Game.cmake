@@ -418,6 +418,11 @@ include("${CMAKE_CURRENT_LIST_DIR}/Hasm.cmake")
 add_executable(rewraithed ${GAME_SRCS} ${OVERLAY_SRCS} ${PORT_SRCS} "${HASM_OUTPUT}" ${LIBGTE_OUTPUT} ${GAME_ASM_OUTPUTS})
 target_compile_definitions(rewraithed PRIVATE PORT_GAME_LIBGTE=${PORT_GAME_LIBGTE})
 
+# the exe's icon (art/rewraithed.ico), which SDL also gives the window
+if(WIN32)
+    target_sources(rewraithed PRIVATE "${PORT_DIR}/res/rewraithed.rc")
+endif()
+
 # The game looks for the disc image in a "disc" folder next to the exe
 # (port/src/native/disc_folder_win32.c); create it so it is easy to find.
 add_custom_command(TARGET rewraithed POST_BUILD

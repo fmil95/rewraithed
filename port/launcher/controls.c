@@ -29,13 +29,15 @@ static const wchar_t *const mouse_button_labels[MOUSE_BUTTON_COUNT] = {
 
 #define SLOTS (BIND_COUNT * 2)  /* keys, then alternate keys */
 
-enum { ID_KEY0 = 200, ID_MOUSE0 = 260, ID_OK = 300, ID_CANCEL, ID_DEFAULTS };
+enum { ID_KEY0 = 200, ID_MOUSE0 = 260, ID_INVERT_YES = 280, ID_INVERT_NO, ID_OK = 300, ID_CANCEL, ID_DEFAULTS };
 
 typedef struct
 {
     PortSettings work;
     HWND keyButtons[SLOTS];
     HWND mouseCombos[MOUSE_COUNT];
+    HWND invertYes;
+    HWND invertNo;
     int capture;            /* slot waiting for a key, or -1 */
     int done;               /* 1 OK, -1 cancel */
 } ControlsState;
@@ -190,6 +192,9 @@ static void show_all(void)
     {
         show_mouse(i);
     }
+
+    SendMessageW(cs->invertYes, BM_SETCHECK, cs->work.invertAim ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(cs->invertNo, BM_SETCHECK, cs->work.invertAim ? BST_UNCHECKED : BST_CHECKED, 0);
 }
 
 static LRESULT CALLBACK controls_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
@@ -237,6 +242,11 @@ static LRESULT CALLBACK controls_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
             cs->work.mouse[i] = b;
         }
+        else if ((id == ID_INVERT_YES) || (id == ID_INVERT_NO))
+        {
+            cs->work.invertAim = (id == ID_INVERT_YES);
+            show_all();
+        }
         else if (id == ID_DEFAULTS)
         {
             PortSettings d;
@@ -245,6 +255,7 @@ static LRESULT CALLBACK controls_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             memcpy(cs->work.keys, d.keys, sizeof(d.keys));
             memcpy(cs->work.keys2, d.keys2, sizeof(d.keys2));
             memcpy(cs->work.mouse, d.mouse, sizeof(d.mouse));
+            cs->work.invertAim = d.invertAim;
             cs->capture = -1;
             show_all();
         }
@@ -384,6 +395,18 @@ int controls_dialog(HWND owner, PortSettings *s, HFONT font, int dpi)
 
         SendMessageW(label, WM_SETFONT, (WPARAM)font, TRUE);
         SendMessageW(state.mouseCombos[i], WM_SETFONT, (WPARAM)font, TRUE);
+    }
+
+    /* beside Aim: which way moving the mouse up looks */
+    {
+        HWND label = CHILD(L"STATIC", L"Invert Aim Controls", SS_CENTERIMAGE, 300, 396, 120, 26, 0);
+
+        state.invertYes = CHILD(L"BUTTON", L"Yes", BS_CHECKBOX | WS_TABSTOP, 424, 396, 56, 26, ID_INVERT_YES);
+        state.invertNo = CHILD(L"BUTTON", L"No", BS_CHECKBOX | WS_TABSTOP, 488, 396, 56, 26, ID_INVERT_NO);
+
+        SendMessageW(label, WM_SETFONT, (WPARAM)font, TRUE);
+        SendMessageW(state.invertYes, WM_SETFONT, (WPARAM)font, TRUE);
+        SendMessageW(state.invertNo, WM_SETFONT, (WPARAM)font, TRUE);
     }
 
     show_all();

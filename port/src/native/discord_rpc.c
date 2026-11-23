@@ -25,7 +25,9 @@
 #endif
 
 /* art asset keys in the Discord application */
-#define DISCORD_IMAGE_LOGO      "logo"
+/* the large image: the icon in the repository (art/shiftglyph.png), by URL,
+ * which Discord shows without an uploaded art asset */
+#define DISCORD_IMAGE_LOGO      "https://raw.githubusercontent.com/fmil95/rewraithed/main/art/shiftglyph.png"
 #define DISCORD_IMAGE_MATERIAL  "material"
 #define DISCORD_IMAGE_SPECTRAL  "spectral"
 

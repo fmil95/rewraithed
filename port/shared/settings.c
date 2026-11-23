@@ -210,6 +210,12 @@ int port_settings_load(PortSettings *s, const char *path)
         {
             int b;
 
+            if (_stricmp(key, "InvertAim") == 0)
+            {
+                s->invertAim = yes(value);
+                continue;
+            }
+
             for (i = 0; i < MOUSE_COUNT; i++)
             {
                 if (_stricmp(key, port_mouse_action_names[i]) != 0)
@@ -387,6 +393,8 @@ int port_settings_save(const PortSettings *s, const char *path)
     {
         fprintf(f, "%s=%s\n", port_mouse_action_names[i], port_mouse_button_names[s->mouse[i]]);
     }
+
+    fprintf(f, "InvertAim=%s\n", s->invertAim ? "Yes" : "No");
 
     fprintf(f, "\n[Joystick]\n");
     fprintf(f, "Enabled=%s\n", s->joystick ? "Yes" : "No");

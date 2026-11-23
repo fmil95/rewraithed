@@ -1,0 +1,3 @@
+/* The icon of rewraithed.exe and rewraithed-launcher.exe (art/rewraithed.ico,
+ * made by tools/make_icon.ps1). SDL and the launcher take the first icon. */
+1 ICON "../../art/rewraithed.ico"

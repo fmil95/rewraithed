@@ -66,6 +66,10 @@ typedef struct
     /* mouse: MOUSE_* button for each MOUSE_* action */
     int mouse[MOUSE_COUNT];
 
+    /* mouse look while aiming or looking around: 0 moving the mouse up looks
+     * up, 1 it looks down (as the analog stick does) */
+    int invertAim;
+
     /* joystick (an SDL game controller): on or off, and the controller
      * button for each PSX button, by SDL's names ("a", "lefttrigger",
      * "dpup", ...; "none" for none). The left stick also moves. */
