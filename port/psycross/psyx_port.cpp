@@ -579,14 +579,14 @@ void PsyX_PortStoreShownFrame(int x, int y, int w, int h)
  * buffer's place in VRAM (PsyX_PortStoreWindowToVRAM) for the rest. */
 static int feedbackDone;    /* this frame */
 
-extern "C" int port_feedback_allowed(void);     /* port/src/gpu_hooks.c */
+extern "C" int port_feedback_allowed(int pageY);     /* port/src/gpu_hooks.c */
 
 int PsyX_PortReadsDrawBuffer(int tpage, const RECT16 *clip)
 {
     int px = (tpage & 0xF) * 64;
     int py = ((tpage >> 4) & 1) * 256;
 
-    if (feedbackDone || (tpage & 0x8000) || (((tpage >> 7) & 3) != 2) || !port_feedback_allowed())
+    if (feedbackDone || (tpage & 0x8000) || (((tpage >> 7) & 3) != 2) || !port_feedback_allowed(py))
     {
         return 0;
     }

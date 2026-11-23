@@ -32,6 +32,7 @@
 
 void port_present_rgb_frame(const unsigned char *rgb, int w, int h);   /* native/rgb24_present.c */
 extern void PsyX_UpdateInput(void);
+void port_debug_frame(void);                                           /* native/debug_capture.c */
 extern void port_spu_exclusive(int want);                              /* spu.c */
 
 #define READ_CHUNK      (64 * 1024)
@@ -475,6 +476,12 @@ int port_dc_movie_play(const char *strfile, unsigned short mask)
         SDL_PauseAudioDevice(dev, 0);
     }
 
+    /* a button already held (the press that skipped the movie before)
+     * is not a new press */
+    PsyX_UpdateInput();
+    lastPad0 = CINE_Pad(0);
+    lastPad1 = CINE_Pad(1);
+
     start = SDL_GetPerformanceCounter();
 
     while ((f >= 0) && (rgb != NULL) && (pcm != NULL))
@@ -505,7 +512,9 @@ int port_dc_movie_play(const char *strfile, unsigned short mask)
         port_present_rgb_frame(rgb, w, h);
 
         /* the cinema player's skip: a new press of a button in the mask
-         * (the pads read active-low) */
+         * (the pads read active-low); scripted keys and the watchdog
+         * of test runs count the pictures (native/debug_capture.c) */
+        port_debug_frame();
         PsyX_UpdateInput();
         pad0 = CINE_Pad(0);
         pad1 = CINE_Pad(1);

@@ -351,9 +351,25 @@ void port_movie_present(void)
     PsyX_UpdateInput();
 }
 
+static int port_loaded_rows;   /* below, at port_feedback_allowed */
+
 int port_LoadImage(RECT16 *rect, u_long *p)
 {
     int ret = LoadImage(rect, p);
+
+    /* a picture in the display buffers' part of VRAM (port_feedback_allowed) */
+    if (rect->x < 512)
+    {
+        if (rect->y < 256)
+        {
+            port_loaded_rows |= 1;
+        }
+
+        if (rect->y + rect->h > 256)
+        {
+            port_loaded_rows |= 2;
+        }
+    }
 
     port_show_vram_write(rect->x, rect->y, rect->w, rect->h);
     port_draw_done_pending = 1;
@@ -399,12 +415,20 @@ void port_DrawPrim(void *p)
 
 /* Debug: REWRAITHED_OTCHECK=1 logs packets whose first command byte is not a
  * drawing command PsyCross understands, before PsyCross parses them. */
+/* VRAM page rows (bit 0: y 0-255, bit 1: y 256-511) a picture was loaded
+ * into, left of x 512, since the last frame was drawn: the main menu and
+ * the loading screens load their background into the buffer being drawn
+ * (screen_to_vram) and draw from it */
+static int port_loaded_rows;
+
 /* The buffer being drawn is read back into VRAM for polygons textured from
  * it (port/psycross/psyx_port.cpp), except while the spectral death effect
- * draws over the picture shown, which puts that picture in VRAM itself. */
-int port_feedback_allowed(void)
+ * draws over the picture shown, which puts that picture in VRAM itself,
+ * and when the game loaded a picture there this frame, which is then what
+ * those polygons are meant to show. */
+int port_feedback_allowed(int pageY)
 {
-    return !port_drawing_over_shown;
+    return !port_drawing_over_shown && !(port_loaded_rows & ((pageY >= 256) ? 2 : 1));
 }
 
 static void port_check_ot(u_long *p)
@@ -599,7 +623,6 @@ void port_DrawOTag(u_long *p)
 
     /* a frame is being drawn: it shows those writes itself */
     port_display_dirty = 0;
-
     /* PsyCross's PutDispEnv keeps the display a frame behind on purpose, so
      * that normally the page drawn is where it puts the window; this effect
      * draws into the page being shown, so line the display up with it (the
@@ -621,6 +644,8 @@ void port_DrawOTag(u_long *p)
     }
 
     DrawOTag(p);
+
+    port_loaded_rows = 0;
 
     port_debug_frame();
 
