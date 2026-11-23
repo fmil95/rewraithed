@@ -27,4 +27,11 @@ unsigned char *dc_disc_read_bigfile(DcDisc *disc, unsigned long hash, long *size
 /* bytes of TEXTURES.VQ; 0 if past its end or unreadable */
 int dc_disc_read_textures(DcDisc *disc, long offset, long length, unsigned char *out);
 
+/* a file in the disc's root folder (e.g. "INTRO.SFD"): 1, its first
+ * sector and size; 0 if absent */
+int dc_disc_find_file(DcDisc *disc, const char *name, long *lba, long *size);
+
+/* length bytes from offset into the file starting at sector lba */
+int dc_disc_read_file(DcDisc *disc, long lba, long offset, long length, unsigned char *out);
+
 #endif

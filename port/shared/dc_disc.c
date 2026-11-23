@@ -472,3 +472,13 @@ int dc_disc_read_textures(DcDisc *disc, long offset, long length, unsigned char 
 
     return read_bytes(disc, disc->texLba, offset, length, out);
 }
+
+int dc_disc_find_file(DcDisc *disc, const char *name, long *lba, long *size)
+{
+    return find_root_file(disc, name, lba, size);
+}
+
+int dc_disc_read_file(DcDisc *disc, long lba, long offset, long length, unsigned char *out)
+{
+    return read_bytes(disc, lba, offset, length, out);
+}

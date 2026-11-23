@@ -10,6 +10,7 @@
 
 enum { DISPLAY_WINDOWED, DISPLAY_FULLSCREEN, DISPLAY_BORDERLESS };
 enum { SKIP_NONE, SKIP_TO_MENU, SKIP_TO_GAME };
+enum { MOVIES_PSX, MOVIES_PC, MOVIES_DC };
 
 /* PSX pad buttons, in the order of the keyboard bindings */
 enum
@@ -55,8 +56,10 @@ typedef struct
                                Dreamcast disc in the "dreamcast" folder */
     int protoAssets;        /* assets from the April 1999 prototype's disc
                                in the "proto" folder (the Spirit Glyph icon) */
-    int pcMovies;           /* the PC version's movies, from the movies
-                               folder (pc_disc.c) */
+    int gameMovies;         /* MOVIES_*: whose movies play: the Dreamcast
+                               disc's (dc_disc.c), the PC disc's .rpl files
+                               in the movies folder (pc_disc.c), or the
+                               PlayStation's */
     char parameters[256];   /* extra command-line options (-uncut, ...) */
 
     /* keyboard: SDL scancode names; each button has a second, alternate key

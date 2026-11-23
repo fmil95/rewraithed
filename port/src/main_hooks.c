@@ -144,11 +144,13 @@ void CINE_Play(char *strfile, unsigned short mask, int buffers)
         return;
     }
 
-    /* "Use PC Movies": the PC version's, when it has this one (pc_movies.c) */
+    /* Game Movies: the Dreamcast version's (dc_movies.c) or the PC version's
+     * (pc_movies.c), when that disc has this one; else the PlayStation's */
     {
+        extern int port_dc_movie_play(const char *strfile, unsigned short mask);
         extern int port_pc_movie_play(const char *strfile, unsigned short mask);
 
-        if (port_pc_movie_play(strfile, mask))
+        if (port_dc_movie_play(strfile, mask) || port_pc_movie_play(strfile, mask))
         {
             return;
         }

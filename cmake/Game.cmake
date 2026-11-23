@@ -436,6 +436,7 @@ target_include_directories(rewraithed PRIVATE
     "${SOULRE_DIR}/include"
     "${GAME_FIXED_DIR}"   # patched copies shadow soul-re/src for #include "Game/..."
     "${SOULRE_DIR}/src"
+    "${pl_mpeg_SOURCE_DIR}"   # pl_mpeg.h (dc_movies.c)
 )
 
 target_compile_definitions(rewraithed PRIVATE

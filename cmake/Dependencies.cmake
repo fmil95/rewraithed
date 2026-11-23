@@ -28,4 +28,10 @@ FetchContent_Declare(openal
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 
-FetchContent_MakeAvailable(SDL2 openal)
+# --- pl_mpeg (MIT): MPEG-1 video of the Dreamcast movies (port/src/dc_movies.c)
+FetchContent_Declare(pl_mpeg
+    URL https://github.com/phoboslab/pl_mpeg/archive/c871f2be022ece7ef4f64230b4fb8e1fb9eb6023.tar.gz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+
+FetchContent_MakeAvailable(SDL2 openal pl_mpeg)

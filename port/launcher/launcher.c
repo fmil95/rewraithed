@@ -28,7 +28,7 @@ enum
     ID_VSYNC_YES, ID_VSYNC_NO, ID_PILLAR_YES, ID_PILLAR_NO, ID_PGXP_YES, ID_PGXP_NO,
     ID_FILTERING, ID_AA, ID_AREA,
     ID_SKIP, ID_DITHER, ID_PRELOAD_YES, ID_PRELOAD_NO, ID_DEBUG_YES, ID_DEBUG_NO,
-    ID_LOG_YES, ID_LOG_NO, ID_DISCORD_YES, ID_DISCORD_NO, ID_DC_YES, ID_DC_NO, ID_PROTO_YES, ID_PROTO_NO, ID_PCMOV_YES, ID_PCMOV_NO, ID_NOLB_YES, ID_NOLB_NO, ID_FPS, ID_CONTROLS, ID_JOYSTICK,
+    ID_LOG_YES, ID_LOG_NO, ID_DISCORD_YES, ID_DISCORD_NO, ID_DC_YES, ID_DC_NO, ID_PROTO_YES, ID_PROTO_NO, ID_MOV_DC, ID_MOV_PC, ID_MOV_PSX, ID_NOLB_YES, ID_NOLB_NO, ID_FPS, ID_CONTROLS, ID_JOYSTICK,
     ID_PARAMS, ID_PLAY, ID_UPDATE,
 };
 
@@ -320,6 +320,21 @@ static void update_letterbox_option(void)
     EnableWindow(GetDlgItem(main_window, ID_NOLB_NO), on);
 }
 
+/* Game Movies: one of DC, PC, PSX (MOVIES_*) */
+static void movies_set(int which)
+{
+    CheckDlgButton(main_window, ID_MOV_DC, (which == MOVIES_DC) ? BST_CHECKED : BST_UNCHECKED);
+    CheckDlgButton(main_window, ID_MOV_PC, (which == MOVIES_PC) ? BST_CHECKED : BST_UNCHECKED);
+    CheckDlgButton(main_window, ID_MOV_PSX, (which == MOVIES_PSX) ? BST_CHECKED : BST_UNCHECKED);
+}
+
+static int movies_get(void)
+{
+    if (IsDlgButtonChecked(main_window, ID_MOV_DC) == BST_CHECKED) return MOVIES_DC;
+    if (IsDlgButtonChecked(main_window, ID_MOV_PC) == BST_CHECKED) return MOVIES_PC;
+    return MOVIES_PSX;
+}
+
 static void build_ui(HWND hwnd)
 {
     HWND lbl;
@@ -394,9 +409,14 @@ static void build_ui(HWND hwnd)
         L"Shows on your Discord profile that you are playing Rewraithed, with the area you are in and the realm. "
         L"Needs the Discord app running on this PC.");
     y += 36;
-    yes_no_row(hwnd, L"Use PC Movies", 336, y, 144, 484, ID_PCMOV_YES,
-        L"Plays the movies of the 1999 PC version instead of the PlayStation ones. "
-        L"Needs the .rpl files from your PC disc, or an image of that disc, in the movies folder next to the game.");
+    lbl = label(hwnd, L"Game Movies", 336, y, 144);
+    control(hwnd, L"BUTTON", L"DC", BS_CHECKBOX | WS_TABSTOP, 484, y, 46, 24, ID_MOV_DC);
+    control(hwnd, L"BUTTON", L"PC", BS_CHECKBOX | WS_TABSTOP, 534, y, 46, 24, ID_MOV_PC);
+    control(hwnd, L"BUTTON", L"PSX", BS_CHECKBOX | WS_TABSTOP, 584, y, 52, 24, ID_MOV_PSX);
+    tooltip(hwnd, lbl,
+        L"Whose movies play. DC: the Dreamcast version's, the smoothest and sharpest (30 frames a second), from your "
+        L"Dreamcast disc dump in the dreamcast folder. PC: the 1999 PC version's, from the .rpl files of its disc "
+        L"(or an image of it) in the movies folder. PSX: the PlayStation's own.");
     y += 36;
     yes_no_row(hwnd, L"Use DC Models", 336, y, 144, 484, ID_DC_YES,
         L"Draws Raziel and Kain with their more detailed models from the Dreamcast version. "
@@ -590,7 +610,16 @@ static void show_settings(void)
 
     /* only on while the April disc is in the proto folder */
     yes_no_set(ID_PROTO_YES, settings.protoAssets && proto_disc_locate(NULL, 0, NULL, 0));
-    yes_no_set(ID_PCMOV_YES, settings.pcMovies && pc_disc_locate(NULL, 0));
+    {
+        int movies = settings.gameMovies;
+
+        if (((movies == MOVIES_DC) && !dc_disc_locate(NULL, 0, NULL, 0)) || ((movies == MOVIES_PC) && !pc_disc_locate(NULL, 0)))
+        {
+            movies = MOVIES_PSX;
+        }
+
+        movies_set(movies);
+    }
 
     {
         wchar_t params[256];
@@ -640,7 +669,7 @@ static void read_settings(void)
     settings.discordPresence = yes_no_get(ID_DISCORD_YES);
     settings.dcModels = yes_no_get(ID_DC_YES);
     settings.protoAssets = yes_no_get(ID_PROTO_YES);
-    settings.pcMovies = yes_no_get(ID_PCMOV_YES);
+    settings.gameMovies = movies_get();
     settings.fpsLimit = fps_values[combo_get(ID_FPS)];
 
     {
@@ -827,7 +856,32 @@ static LRESULT CALLBACK main_proc_options(HWND hwnd, UINT msg, WPARAM wp, LPARAM
         case ID_PROTO_NO:
             yes_no_set(ID_PROTO_YES, 0);
             return 0;
-        case ID_PCMOV_YES:
+        case ID_MOV_DC:
+        {
+            char problem[700];
+            char folder[MAX_PATH];
+            wchar_t text[1200];
+
+            if (!dc_disc_locate(NULL, 0, problem, sizeof(problem)))
+            {
+                dc_disc_folder(folder, sizeof(folder));
+                CreateDirectoryA(folder, NULL);
+
+                swprintf(text, 1200,
+                    L"The Dreamcast movies are read from your own copy of the Dreamcast version of Soul Reaver.\n\n"
+                    L"Place your dump of the disc, the .gdi file with all its track files, in this folder:\n\n%hs\n\n"
+                    L"then choose DC again.\n\n(%hs)", folder, problem);
+                MessageBoxW(hwnd, text, L"Game Movies", MB_ICONINFORMATION);
+                return 0;
+            }
+
+            movies_set(MOVIES_DC);
+            return 0;
+        }
+        case ID_MOV_PSX:
+            movies_set(MOVIES_PSX);
+            return 0;
+        case ID_MOV_PC:
         {
             char problem[700];
             char folder[MAX_PATH];
@@ -845,18 +899,14 @@ static LRESULT CALLBACK main_proc_options(HWND hwnd, UINT msg, WPARAM wp, LPARAM
                 swprintf(text, 1200,
                     L"The PC movies are read from your own copy of the 1999 PC version of Soul Reaver.\n\n"
                     L"Place the .rpl files from the root of its disc, or an image of the disc (.iso), in this folder:\n\n%hs\n\n"
-                    L"then choose Yes again.\n\n(%hs)", folder, problem);
-                MessageBoxW(hwnd, text, L"Use PC Movies", MB_ICONINFORMATION);
-                yes_no_set(ID_PCMOV_YES, 0);
+                    L"then choose PC again.\n\n(%hs)", folder, problem);
+                MessageBoxW(hwnd, text, L"Game Movies", MB_ICONINFORMATION);
                 return 0;
             }
 
-            yes_no_set(ID_PCMOV_YES, 1);
+            movies_set(MOVIES_PC);
             return 0;
         }
-        case ID_PCMOV_NO:
-            yes_no_set(ID_PCMOV_YES, 0);
-            return 0;
         case ID_VSYNC_YES: case ID_VSYNC_NO:
         case ID_PILLAR_YES: case ID_PILLAR_NO:
         case ID_PGXP_YES: case ID_PGXP_NO:

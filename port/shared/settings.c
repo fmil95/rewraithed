@@ -310,7 +310,12 @@ int port_settings_load(PortSettings *s, const char *path)
         else if (_stricmp(key, "DiscordPresence") == 0) s->discordPresence = yes(value);
         else if (_stricmp(key, "DreamcastModels") == 0) s->dcModels = yes(value);
         else if (_stricmp(key, "ProtoAssets") == 0)     s->protoAssets = yes(value);
-        else if (_stricmp(key, "PCMovies") == 0)        s->pcMovies = yes(value);
+        else if (_stricmp(key, "GameMovies") == 0)
+        {
+            s->gameMovies = (_stricmp(value, "DC") == 0) ? MOVIES_DC : ((_stricmp(value, "PC") == 0) ? MOVIES_PC : MOVIES_PSX);
+        }
+        /* before Game Movies: Use PC Movies, Yes or No */
+        else if (_stricmp(key, "PCMovies") == 0)        s->gameMovies = yes(value) ? MOVIES_PC : MOVIES_PSX;
         else if (_stricmp(key, "Parameters") == 0)      snprintf(s->parameters, sizeof(s->parameters), "%s", value);
     }
 
@@ -372,7 +377,7 @@ int port_settings_save(const PortSettings *s, const char *path)
     fprintf(f, "DiscordPresence=%s\n", s->discordPresence ? "Yes" : "No");
     fprintf(f, "DreamcastModels=%s\n", s->dcModels ? "Yes" : "No");
     fprintf(f, "ProtoAssets=%s\n", s->protoAssets ? "Yes" : "No");
-    fprintf(f, "PCMovies=%s\n", s->pcMovies ? "Yes" : "No");
+    fprintf(f, "GameMovies=%s\n", (s->gameMovies == MOVIES_DC) ? "DC" : ((s->gameMovies == MOVIES_PC) ? "PC" : "PSX"));
     fprintf(f, "Parameters=%s\n", s->parameters);
 
     fprintf(f, "\n[Keys]\n");

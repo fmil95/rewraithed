@@ -580,7 +580,7 @@ int port_pc_movie_play(const char *strfile, unsigned short mask)
     long maxAudio = 0;
     int f;
 
-    if (!port_settings.pcMovies || !pc_movie_name(strfile, name, sizeof(name)))
+    if ((port_settings.gameMovies != MOVIES_PC) || !pc_movie_name(strfile, name, sizeof(name)))
     {
         return 0;
     }
