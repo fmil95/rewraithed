@@ -410,10 +410,11 @@ psycross_fixup(gpu/PsyX_GPU.cpp
     FIND    "void MakeVertexTriangle(GrVertex* vertex, VERTTYPE* p0, VERTTYPE* p1, VERTTYPE* p2, ushort gteidx)\n"
     REPLACE "extern \"C\" void PsyX_PortPgxpApply(GrVertex* vertex, VERTTYPE** pts, int count);\n\nvoid MakeVertexTriangle(GrVertex* vertex, VERTTYPE* p0, VERTTYPE* p1, VERTTYPE* p2, ushort gteidx)\n")
 
-# the fraction (in 1/128 pixel) is in the vertex's two spare bytes, a_extra.zw
+# the fraction (in 1/128 pixel) is in the vertex's two spare bytes, a_extra.zw;
+# x as -1 - fraction on polygons PGXP placed (a mark for the edges pass)
 psycross_fixup(render/PsyX_render.cpp
     FIND    "\"\tgl_Position = Projection * vec4(a_position.xy, 0.0, 1.0);\\n\""
-    REPLACE "\"\tgl_Position = Projection * vec4(a_position.xy + a_extra.zw / 128.0, 0.0, 1.0);\\n\"")
+    REPLACE "\"\tgl_Position = Projection * vec4(a_position.xy + vec2(a_extra.z < 0.0 ? -1.0 - a_extra.z : a_extra.z, a_extra.w) / 128.0, 0.0, 1.0);\\n\"")
 
 # Alternate keys, the mouse and the debug menu key (port/psycross), on top
 # of the keyboard.
@@ -825,7 +826,7 @@ psycross_fixup(PsyX_main.cpp
 
 psycross_fixup(PsyX_main.cpp
     FIND    "void PsyX_Sys_DoDebugKeys(int nKey, char down)\n{"
-    REPLACE "extern \"C\" void PsyX_PortVideoHotkey(int scancode);\n\nvoid PsyX_Sys_DoDebugKeys(int nKey, char down)\n{")
+    REPLACE "extern \"C\" void PsyX_PortVideoHotkey(int scancode);\nextern \"C\" void PsyX_PortCycleDisplay(void);\nextern \"C\" void port_osd_note(const char *fmt, ...);\n\nvoid PsyX_Sys_DoDebugKeys(int nKey, char down)\n{")
 
 # NULL read: a falling physical object realigned before its first frame
 # had previous segment matrices (instance->oldMatrix). On PSX that reads
@@ -944,8 +945,66 @@ game_fixup(Game/DRAW.c
 # T-junction shows the neighbouring edge, not the fog colour behind.
 psycross_fixup(gpu/PsyX_GPU.cpp
     FIND    "\tfor (int i = 1; i <= g_splitIndex; i++)\n\t\tDrawSplit(g_splits[i]);\n"
-    REPLACE "\tif (PsyX_PortEdgesFirst())\n\t{\n\t\tPsyX_PortLineMode(1);\n\n\t\tfor (int i = 1; i <= g_splitIndex; i++)\n\t\t{\n\t\t\tif (g_splits[i].blendMode == BM_NONE)\n\t\t\t\tDrawSplit(g_splits[i]);\n\t\t}\n\n\t\tPsyX_PortLineMode(0);\n\t}\n\n\tfor (int i = 1; i <= g_splitIndex; i++)\n\t\tDrawSplit(g_splits[i]);\n")
+    REPLACE "\tif (PsyX_PortEdgesFirst())\n\t{\n\t\tPsyX_PortEdgesVertices(g_vertexBuffer, g_vertexIndex);\n\t\tPsyX_PortLineMode(1);\n\n\t\tfor (int i = 1; i <= g_splitIndex; i++)\n\t\t{\n\t\t\tif (g_splits[i].blendMode == BM_NONE)\n\t\t\t\tDrawSplit(g_splits[i]);\n\t\t}\n\n\t\tPsyX_PortLineMode(0);\n\t\tGR_UpdateVertexBuffer(g_vertexBuffer, g_vertexIndex);\n\t}\n\n\tfor (int i = 1; i <= g_splitIndex; i++)\n\t\tDrawSplit(g_splits[i]);\n")
 
 psycross_fixup(gpu/PsyX_GPU.cpp
     FIND    "void DrawAllSplits()\n{\n"
-    REPLACE "extern \"C\" int PsyX_PortEdgesFirst(void);\nextern \"C\" void PsyX_PortLineMode(int lines);\n\nvoid DrawAllSplits()\n{\n")
+    REPLACE "extern \"C\" int PsyX_PortEdgesFirst(void);\nextern \"C\" void PsyX_PortLineMode(int lines);\nextern \"C\" void PsyX_PortEdgesVertices(const GrVertex* vertices, int count);\n\nvoid DrawAllSplits()\n{\n")
+
+# QoLs: "Disable respawning enemies in block puzzles" (port/src/qol.c) marks
+# the Zephonim (wallcr) of cathy13, cathy59 and cathy60 as not respawning.
+game_fixup(Game/MONSTER/MONLIB.c
+    FIND    "void MON_ProcessIntro(Instance *instance)\n{\n"
+    REPLACE "void port_qol_monster_intro(Instance *instance);\n\nvoid MON_ProcessIntro(Instance *instance)\n{\n")
+game_fixup(Game/MONSTER/MONLIB.c
+    FIND    "    MonsterAttributes *ma;\n\n    initialBehavior = -1;\n"
+    REPLACE "    MonsterAttributes *ma;\n\n    port_qol_monster_intro(instance);\n\n    initialBehavior = -1;\n")
+
+# Alt+Enter (either Alt) cycles the display: Fullscreen, Windowed, Borderless
+# (video_hotkeys.c), in place of PsyCross's right Alt+Enter between a window
+# and borderless; Start (Enter) is not pressed with it.
+psycross_fixup(PsyX_main.cpp
+    FIND    "\t\t\t\t\tif (g_altKeyState && event.type == SDL_KEYDOWN)\n\t\t\t\t\t{\n\t\t\t\t\t\tint fullscreen = SDL_GetWindowFlags(g_window) & SDL_WINDOW_FULLSCREEN > 0;\n\n\t\t\t\t\t\tSDL_SetWindowFullscreen(g_window, fullscreen ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);\n\n\t\t\t\t\t\tSDL_GetWindowSize(g_window, &g_windowWidth, &g_windowHeight);\n\t\t\t\t\t\tGR_ResetDevice();\n\t\t\t\t\t}\n\t\t\t\t\tbreak;\n"
+    REPLACE "\t\t\t\t\tif ((SDL_GetModState() & KMOD_ALT) && event.type == SDL_KEYDOWN && !event.key.repeat)\n\t\t\t\t\t{\n\t\t\t\t\t\tPsyX_PortCycleDisplay();\n\t\t\t\t\t}\n\t\t\t\t\tbreak;\n")
+psycross_fixup(PsyX_main.cpp
+    FIND    "extern void GR_ResetDevice();\n"
+    REPLACE "extern void GR_ResetDevice();\nextern \"C\" void PsyX_PortCycleDisplay(void);\n")
+psycross_fixup(pad/PsyX_pad.cpp
+    FIND    "\tif (g_sdlKeyboardState[mapping.kc_start])//START\n"
+    REPLACE "\tif (g_sdlKeyboardState[mapping.kc_start] && !(SDL_GetModState() & KMOD_ALT))//START\n")
+
+# The note in the upper left corner (osd.c) for PsyCross's own keys that do
+# something: F3 always, F12 when screenshots are built in, F1, F2 and F10 in
+# Debug builds.
+psycross_fixup(PsyX_main.cpp
+    FIND    "\t\t\teprintwarn(\"wireframe mode: %d\\n\", g_dbg_wireframeMode);\n"
+    REPLACE "\t\t\tport_osd_note(\"Wireframe: %s\", g_dbg_wireframeMode ? \"on\" : \"off\");\n")
+psycross_fixup(PsyX_main.cpp
+    FIND    "\t\t\teprintwarn(\"textureless mode: %d\\n\", g_dbg_texturelessMode);\n"
+    REPLACE "\t\t\tport_osd_note(\"Textureless: %s\", g_dbg_texturelessMode ? \"on\" : \"off\");\n")
+psycross_fixup(PsyX_main.cpp
+    FIND    "\t\t\teprintwarn(\"saving VRAM.TGA\\n\");\n"
+    REPLACE "\t\t\tport_osd_note(\"VRAM saved: VRAM.TGA\");\n")
+psycross_fixup(PsyX_main.cpp
+    FIND    "\t\t\teprintwarn(\"Saving screenshot...\\n\");\n"
+    REPLACE "\t\t\tport_osd_note(\"Screenshot saved\");\n")
+psycross_fixup(PsyX_main.cpp
+    FIND    "\t\t\teprintwarn(\"filtering mode: %d\\n\", g_cfg_bilinearFiltering);\n"
+    REPLACE "\t\t\tport_osd_note(\"Filtering: %s\", g_cfg_bilinearFiltering ? \"Bilinear\" : \"Off\");\n")
+game_fixup(Game/FONT.c
+    FIND    "void FONT_Flush()\n{\n    long i;\n    FontChar *fontChar;\n\n"
+    REPLACE "void port_osd_draw(void);\n\nvoid FONT_Flush()\n{\n    long i;\n    FontChar *fontChar;\n\n    port_osd_draw();\n\n")
+
+# QoLs: "Add health and energy rechargers in Underworld" (port/src/qol.c):
+# the rechargers of the modded under1 come in hidden until Kain's scene in
+# pillars1 has shown that area's own, and follow that state each frame.
+game_fixup(Game/INSTANCE.c
+    FIND    "Instance *INSTANCE_IntroduceInstance(Intro *intro, short streamUnitID)\n{\n"
+    REPLACE "void port_qol_introduce(Intro *intro, short streamUnitID);\n\nInstance *INSTANCE_IntroduceInstance(Intro *intro, short streamUnitID)\n{\n")
+game_fixup(Game/INSTANCE.c
+    FIND    "    attachInst = NULL;\n\n    if (INSTANCE_Introduced(intro, streamUnitID) == 0)\n"
+    REPLACE "    attachInst = NULL;\n\n    port_qol_introduce(intro, streamUnitID);\n\n    if (INSTANCE_Introduced(intro, streamUnitID) == 0)\n")
+game_fixup(Game/GAMELOOP.c
+    FIND    "    DEBUG_Draw(gameTracker, drawot);\n"
+    REPLACE "    {\n        extern void port_qol_frame(void);\n\n        port_qol_frame();\n    }\n\n    DEBUG_Draw(gameTracker, drawot);\n")
+

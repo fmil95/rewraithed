@@ -18,6 +18,7 @@
 #include "areas.h"
 #include "controls.h"
 #include "joystick.h"
+#include "qols.h"
 #include "update.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
@@ -29,7 +30,7 @@ enum
     ID_FILTERING, ID_AA, ID_AREA,
     ID_SKIP, ID_DITHER, ID_PRELOAD_YES, ID_PRELOAD_NO, ID_DEBUG_YES, ID_DEBUG_NO,
     ID_LOG_YES, ID_LOG_NO, ID_DISCORD_YES, ID_DISCORD_NO, ID_DC_YES, ID_DC_NO, ID_PROTO_YES, ID_PROTO_NO, ID_MOV_DC, ID_MOV_PC, ID_MOV_PSX, ID_NOLB_YES, ID_NOLB_NO, ID_FPS, ID_CONTROLS, ID_JOYSTICK,
-    ID_PARAMS, ID_PLAY, ID_UPDATE,
+    ID_PARAMS, ID_PLAY, ID_UPDATE, ID_QOLS,
 };
 
 typedef struct { int w, h; } Resolution;
@@ -415,13 +416,15 @@ static void build_ui(HWND hwnd)
         L"Uses assets from the April 14, 1999 prototype that the July build lacks: the Spirit Glyph's own icon "
         L"(with -uncut). Needs your own image of that prototype's disc in the proto folder next to the game.");
 
-    /* last row of the box, just above the buttons */
+    /* last row of the box, just above QoLs and the buttons */
     y = 372;
     lbl = label(hwnd, L"Controls", 336, y, 60);
     control(hwnd, L"BUTTON", L"Keyboard and Mouse", BS_PUSHBUTTON | WS_TABSTOP, 404, y, 128, 26, ID_CONTROLS);
     control(hwnd, L"BUTTON", L"Joystick", BS_PUSHBUTTON | WS_TABSTOP, 540, y, 88, 26, ID_JOYSTICK);
     tooltip(hwnd, GetDlgItem(hwnd, ID_JOYSTICK), L"Turn the joystick (a game controller) on or off, and choose its button for each action. The left stick also moves.");
     option_tip(hwnd, lbl, ID_CONTROLS, 0, L"Change the keys for each action, with an alternate key for each (the arrow keys also move), and the mouse buttons for attacking, telekinesis and aiming.");
+    control(hwnd, L"BUTTON", L"QoLs", BS_PUSHBUTTON | WS_TABSTOP, 488, 424, 64, 26, ID_QOLS);
+    tooltip(hwnd, GetDlgItem(hwnd, ID_QOLS), L"Quality-of-life options, such as keeping the enemies of the block puzzles from coming back.");
 
     /* --- bottom: the Area list as wide as its longest name, then Parameters
      * up to the buttons --- */
@@ -429,11 +432,11 @@ static void build_ui(HWND hwnd)
         int areaWidth = area_list_width(hwnd);
         int paramsX = 64 + areaWidth + 12;
 
-        combo_row(hwnd, L"Area", 24, 431, 36, 64, areaWidth, ID_AREA,
+        combo_row(hwnd, L"Area", 24, 457, 36, 64, areaWidth, ID_AREA,
             L"Starts the game straight in the chosen area. Default starts where the disc does.");
 
-        lbl = label(hwnd, L"Parameters", paramsX, 431, 64);
-        control(hwnd, L"EDIT", L"", ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP, paramsX + 66, 432, 480 - (paramsX + 66), 22, ID_PARAMS);
+        lbl = label(hwnd, L"Parameters", paramsX, 457, 64);
+        control(hwnd, L"EDIT", L"", ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP, paramsX + 66, 458, 480 - (paramsX + 66), 22, ID_PARAMS);
         SendDlgItemMessageW(hwnd, ID_PARAMS, EM_SETLIMITTEXT, sizeof(settings.parameters) - 1, 0);
         option_tip(hwnd, lbl, ID_PARAMS, 0,
             L"Extra options for the game, as on its command line, separated by spaces. For example: "
@@ -443,8 +446,8 @@ static void build_ui(HWND hwnd)
 
     /* no Exit button: the window's close button does that; no Save button:
      * each change is saved (main_proc) */
-    control(hwnd, L"BUTTON", L"Play", BS_DEFPUSHBUTTON | WS_TABSTOP, 488, 428, 64, 30, ID_PLAY);
-    control(hwnd, L"BUTTON", L"Update", BS_PUSHBUTTON | WS_TABSTOP, 560, 428, 80, 30, ID_UPDATE);
+    control(hwnd, L"BUTTON", L"Play", BS_DEFPUSHBUTTON | WS_TABSTOP, 488, 454, 64, 30, ID_PLAY);
+    control(hwnd, L"BUTTON", L"Update", BS_PUSHBUTTON | WS_TABSTOP, 560, 454, 80, 30, ID_UPDATE);
     tooltip(hwnd, GetDlgItem(hwnd, ID_UPDATE),
         L"Looks on GitHub for a newer version of Rewraithed, then downloads and installs it if you agree. "
         L"It reads \"Update!\" when one is out.");
@@ -921,6 +924,9 @@ static LRESULT CALLBACK main_proc_options(HWND hwnd, UINT msg, WPARAM wp, LPARAM
         case ID_JOYSTICK:
             joystick_dialog(hwnd, &settings, ui_font, dpi);
             return 0;
+        case ID_QOLS:
+            qols_dialog(hwnd, &settings, ui_font, dpi);
+            return 0;
         case ID_PLAY:
             if (play())
             {
@@ -977,7 +983,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR cmd, int show)
     r.left = 0;
     r.top = 0;
     r.right = S(652);
-    r.bottom = S(470);
+    r.bottom = S(496);
     AdjustWindowRect(&r, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE);
 
     main_window = CreateWindowW(L"RewraithedLauncher", L"Rewraithed Launcher",

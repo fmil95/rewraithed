@@ -62,6 +62,7 @@ typedef struct
     int failed;             /* not there, or not usable: not tried again */
     Model *model;
     Model *psx;             /* the object's own model, for F11 */
+    int collisionReported;  /* hit shapes compared in the log */
 } DcModel;
 
 static DcModel dc_models[DC_MAX_MODELS];
@@ -640,6 +641,57 @@ static void dc_try_load(DcModel *dc, Model *psx)
     }
 }
 
+/* the hit spheres, faces and boxes of a model (HInfo of its segments) */
+static long dc_count_hprims(Model *model)
+{
+    long count = 0;
+    long s;
+
+    for (s = 0; s < model->numSegments; s++)
+    {
+        HInfo *h = model->segmentList[s].hInfo;
+
+        if (h != NULL)
+        {
+            count += h->numHFaces + h->numHSpheres + h->numHBoxes;
+        }
+    }
+
+    return count;
+}
+
+/* The Dreamcast model only changes how they look: what can hit them and be
+ * hit (the hit spheres of each segment, which INSTANCE_DefaultInit copies
+ * per instance) stays the PlayStation model's, as the game's attacks,
+ * Kain's fight among them, were tuned for those. The Dreamcast object file
+ * carries its own (the same within a unit or so). The skeletons are the same, segment for
+ * segment; done at each load, as the PlayStation model moves with its
+ * object's memory. */
+static void dc_use_psx_collision(DcModel *dc)
+{
+    Model *dcModel = dc->model;
+    Model *psx = dc->psx;
+    long s;
+
+    if ((dcModel == NULL) || (psx == NULL) || (dcModel->numSegments != psx->numSegments))
+    {
+        return;
+    }
+
+    if (!dc->collisionReported)
+    {
+        dc->collisionReported = 1;
+
+        printf("[rewraithed] Dreamcast %s: hit shapes %ld, PlayStation %ld; the PlayStation ones are used\n",
+            dc->name, dc_count_hprims(dcModel), dc_count_hprims(psx));
+    }
+
+    for (s = 0; s < dcModel->numSegments; s++)
+    {
+        dcModel->segmentList[s].hInfo = psx->segmentList[s].hInfo;
+    }
+}
+
 /* STREAM_LoadObjectReturn: an object has been loaded */
 void port_dc_object_loaded(char *name, Object *object)
 {
@@ -690,6 +742,7 @@ void port_dc_object_loaded(char *name, Object *object)
 
     if (!dc->failed)
     {
+        dc_use_psx_collision(dc);
         object->modelList[0] = dc->model;
     }
 }

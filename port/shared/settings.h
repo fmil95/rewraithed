@@ -39,6 +39,9 @@ typedef struct
     int vsync;
     int pillarbox;          /* keep 4:3 with bars */
     int noLetterbox;        /* no cutscene bars */
+    int noPuzzleRespawn;    /* QoLs: block puzzle enemies stay dead */
+    int underChargers;      /* QoLs: the modded under1 with health and energy rechargers */
+    int abbeyJumps;         /* QoLs: the Drowned Abbey gate opens with the window */
     int filtering;          /* textures: 0 off, 1 bilinear */
     int pgxp;               /* PGXP: sub-pixel vertex precision */
     int antialiasing;       /* MSAA samples: 0, 2, 4, 8 */

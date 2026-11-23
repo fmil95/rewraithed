@@ -13,6 +13,7 @@
 #include "common.h"
 #include "Game/LOAD3D.h"
 #include "port/cd_drive.h"
+#include "settings.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -116,6 +117,14 @@ static void add_mod_file(const char *game_path, const char *disk_path, void *ctx
     if (_stricmp(game_path, "\\units.txt") == 0)
     {
         read_units_txt(disk_path);
+        return;
+    }
+
+    /* the QoL "Add health and energy rechargers in Underworld" (qol.c): the
+     * modded under1 that places them is only used with that option on */
+    if ((_stricmp(game_path, "\\kain2\\area\\under\\bin\\under1.drm") == 0) && !port_settings.underChargers)
+    {
+        printf("[rewraithed] mods: %s left out (QoLs: Underworld rechargers off)\n", disk_path);
         return;
     }
 

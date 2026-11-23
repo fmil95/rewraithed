@@ -44,6 +44,22 @@ void PsyX_PortSetBorderless(void)
     SDL_GetWindowSize(g_window, &g_windowWidth, &g_windowHeight);
 }
 
+/* A window of the chosen size, centred, from either fullscreen (Alt+Enter,
+ * video_hotkeys.c). Leaving exclusive fullscreen gives the display its own
+ * mode back. */
+void PsyX_PortSetWindowed(int width, int height)
+{
+    if (g_window == NULL)
+    {
+        return;
+    }
+
+    SDL_SetWindowFullscreen(g_window, 0);
+    SDL_SetWindowSize(g_window, width, height);
+    SDL_SetWindowPosition(g_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+    SDL_GetWindowSize(g_window, &g_windowWidth, &g_windowHeight);
+}
+
 /* Fullscreen at the display mode closest to the chosen size and refresh rate
  * (the launcher's Resolution list), from a window made windowed: the mode is
  * set before the window goes fullscreen, so the display changes mode once.
@@ -731,7 +747,10 @@ int g_port_pgxp;    /* set by port/src/pc_main.c from the PGXP setting */
  * positions the two sides then cross the odd pixel centre differently, and
  * the background, the fog colour, showed through: dotted lines along
  * edges. Each frame's opaque polygons are first drawn as their edges, then
- * as usual over them; a pixel no polygon covers keeps an edge's colour. */
+ * as usual over them; a pixel no polygon covers keeps an edge's colour.
+ * Only the polygons PGXP placed are drawn as edges (PsyX_PortEdgesVertices):
+ * 2D ones, such as the font's letters, would show texels from beside them
+ * along their borders. */
 int PsyX_PortEdgesFirst(void)
 {
     return g_port_pgxp;
@@ -740,6 +759,43 @@ int PsyX_PortEdgesFirst(void)
 void PsyX_PortLineMode(int lines)
 {
     glPolygonMode(GL_FRONT_AND_BACK, lines ? GL_LINE : GL_FILL);
+}
+
+/* The vertices for the edges pass: those of polygons PGXP did not place
+ * (no mark, PsyX_PortPgxpApply) moved far off screen, where nothing of
+ * them is drawn. DrawAllSplits uploads the frame's own vertices again
+ * after the pass. */
+void PsyX_PortEdgesVertices(const GrVertex *vertices, int count)
+{
+    static GrVertex *copy;
+    static int copySize;
+    int i;
+
+    if (count > copySize)
+    {
+        free(copy);
+        copy = (GrVertex *)malloc(sizeof(GrVertex) * count);
+        copySize = (copy != NULL) ? count : 0;
+    }
+
+    if (copy == NULL)
+    {
+        GR_UpdateVertexBuffer(vertices, count);
+        return;
+    }
+
+    memcpy(copy, vertices, sizeof(GrVertex) * count);
+
+    for (i = 0; i + 2 < count; i += 3)
+    {
+        if ((copy[i]._p0 >= 0) && (copy[i + 1]._p0 >= 0) && (copy[i + 2]._p0 >= 0))
+        {
+            copy[i].x = copy[i + 1].x = copy[i + 2].x = -30000;
+            copy[i].y = copy[i + 1].y = copy[i + 2].y = -30000;
+        }
+    }
+
+    GR_UpdateVertexBuffer(copy, count);
 }
 
 typedef struct
@@ -975,8 +1031,12 @@ void PsyX_PortPgxpApply(GrVertex *vertex, short **pts, int count)
         float dx, dy;
         int ix, iy;
 
+        /* every vertex of the polygon is marked as PGXP's (the x fraction
+         * stored as -1 - fraction): the edges pass draws only these */
         if (found[i] == NULL)
         {
+            vertex[i]._p0 = -1;
+            vertex[i]._p1 = 0;
             continue;
         }
 
@@ -987,7 +1047,7 @@ void PsyX_PortPgxpApply(GrVertex *vertex, short **pts, int count)
 
         vertex[i].x += ix;
         vertex[i].y += iy;
-        vertex[i]._p0 = (char)((dx - ix) * 127.0f);
+        vertex[i]._p0 = (char)(-1 - (int)((dx - ix) * 127.0f));
         vertex[i]._p1 = (char)((dy - iy) * 127.0f);
     }
 }
