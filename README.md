@@ -1,6 +1,6 @@
 # Rewraithed
 
-<img src="https://i.imgur.com/DiWnBJA.png"/> 
+<img src="https://i.imgur.com/7g69XL6.png"/> 
 
 # Description
 
