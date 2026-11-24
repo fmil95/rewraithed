@@ -8,6 +8,9 @@
 
 #include <stddef.h>
 
+#include "mod_list.h"
+#include "mod_folders.h"
+
 enum { DISPLAY_WINDOWED, DISPLAY_FULLSCREEN, DISPLAY_BORDERLESS };
 enum { SKIP_NONE, SKIP_TO_MENU, SKIP_TO_GAME };
 enum { MOVIES_PSX, MOVIES_PC, MOVIES_DC };
@@ -62,6 +65,10 @@ typedef struct
                                Dreamcast disc in the "dreamcast" folder */
     int protoAssets;        /* assets from the April 1999 prototype's disc
                                in the "proto" folder (the Spirit Glyph icon) */
+    int mods[MOD_COUNT];    /* each mod on or off ([Mods], mod_list.h) */
+    char folderMods[MAX_FOLDER_MODS][FOLDER_MOD_NAME];  /* the mod folders turned
+                               on ([Mods], mod_folders.h), by folder name */
+    int folderModCount;
     int gameMovies;         /* MOVIES_*: whose movies play: the Dreamcast
                                disc's (dc_disc.c), the PC disc's .rpl files
                                in the movies folder (pc_disc.c), or the

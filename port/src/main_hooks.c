@@ -144,13 +144,15 @@ void CINE_Play(char *strfile, unsigned short mask, int buffers)
         return;
     }
 
-    /* Game Movies: the Dreamcast version's (dc_movies.c) or the PC version's
-     * (pc_movies.c), when that disc has this one; else the PlayStation's */
+    /* the intro from Soul Reaver 2 (Mods, sr2_movie.c); Game Movies: the
+     * Dreamcast version's (dc_movies.c) or the PC version's (pc_movies.c),
+     * when that disc has this one; else the PlayStation's */
     {
+        extern int port_sr2_movie_play(const char *strfile, unsigned short mask);
         extern int port_dc_movie_play(const char *strfile, unsigned short mask);
         extern int port_pc_movie_play(const char *strfile, unsigned short mask);
 
-        if (port_dc_movie_play(strfile, mask) || port_pc_movie_play(strfile, mask))
+        if (port_sr2_movie_play(strfile, mask) || port_dc_movie_play(strfile, mask) || port_pc_movie_play(strfile, mask))
         {
             return;
         }

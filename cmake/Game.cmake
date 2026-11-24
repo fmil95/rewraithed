@@ -404,7 +404,7 @@ file(GLOB_RECURSE PORT_SRCS CONFIGURE_DEPENDS "${PORT_DIR}/src/*.c" "${PORT_DIR}
 file(GLOB_RECURSE PORT_NATIVE_SRCS CONFIGURE_DEPENDS "${PORT_DIR}/src/native/*.c" "${PORT_DIR}/src/native/*.cpp")
 
 # port/shared: settings code the launcher uses as well (plain host code too)
-set(PORT_SHARED_SRCS "${PORT_DIR}/shared/settings.c" "${PORT_DIR}/shared/dc_disc.c" "${PORT_DIR}/shared/proto_disc.c" "${PORT_DIR}/shared/proto_areas.c" "${PORT_DIR}/shared/proto_convert.c" "${PORT_DIR}/shared/pc_disc.c")
+set(PORT_SHARED_SRCS "${PORT_DIR}/shared/settings.c" "${PORT_DIR}/shared/dc_disc.c" "${PORT_DIR}/shared/proto_disc.c" "${PORT_DIR}/shared/proto_areas.c" "${PORT_DIR}/shared/proto_convert.c" "${PORT_DIR}/shared/pc_disc.c" "${PORT_DIR}/shared/mod_list.c" "${PORT_DIR}/shared/mod_folders.c" "${PORT_DIR}/shared/sr2_disc.c")
 list(APPEND PORT_SRCS ${PORT_SHARED_SRCS})
 list(APPEND PORT_NATIVE_SRCS ${PORT_SHARED_SRCS})
 
@@ -468,4 +468,4 @@ else()
     target_compile_options(rewraithed PRIVATE -include "${PORT_DIR}/include/port/prefix.h")
 endif()
 
-target_link_libraries(rewraithed PRIVATE psycross SDL2::SDL2-static)
+target_link_libraries(rewraithed PRIVATE psycross SDL2::SDL2-static mfplat mfuuid ole32)

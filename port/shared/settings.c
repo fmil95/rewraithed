@@ -272,6 +272,28 @@ int port_settings_load(PortSettings *s, const char *path)
             continue;
         }
 
+        if (_stricmp(section, "Mods") == 0)
+        {
+            int builtIn = 0;
+
+            for (i = 0; i < MOD_COUNT; i++)
+            {
+                if (_stricmp(key, port_mods[i].key) == 0)
+                {
+                    s->mods[i] = yes(value);
+                    builtIn = 1;
+                }
+            }
+
+            /* any other key: a mod folder's name */
+            if (!builtIn && yes(value) && (s->folderModCount < MAX_FOLDER_MODS) && (strlen(key) < FOLDER_MOD_NAME))
+            {
+                snprintf(s->folderMods[s->folderModCount++], FOLDER_MOD_NAME, "%s", key);
+            }
+
+            continue;
+        }
+
         if (_stricmp(section, "Keys") == 0)
         {
             for (i = 0; i < BIND_COUNT; i++)
@@ -408,6 +430,18 @@ int port_settings_save(const PortSettings *s, const char *path)
     fprintf(f, "ProtoAssets=%s\n", s->protoAssets ? "Yes" : "No");
     fprintf(f, "GameMovies=%s\n", (s->gameMovies == MOVIES_DC) ? "DC" : ((s->gameMovies == MOVIES_PC) ? "PC" : "PSX"));
     fprintf(f, "Parameters=%s\n", s->parameters);
+
+    fprintf(f, "\n[Mods]\n");
+
+    for (i = 0; i < MOD_COUNT; i++)
+    {
+        fprintf(f, "%s=%s\n", port_mods[i].key, s->mods[i] ? "Yes" : "No");
+    }
+
+    for (i = 0; i < s->folderModCount; i++)
+    {
+        fprintf(f, "%s=Yes\n", s->folderMods[i]);
+    }
 
     fprintf(f, "\n[Keys]\n");
 

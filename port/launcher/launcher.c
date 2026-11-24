@@ -20,6 +20,7 @@
 #include "joystick.h"
 #include "qols.h"
 #include "earlier.h"
+#include "mods_window.h"
 #include "update.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
@@ -31,7 +32,7 @@ enum
     ID_FILTERING, ID_AA, ID_AREA,
     ID_SKIP, ID_DITHER, ID_PRELOAD_YES, ID_PRELOAD_NO, ID_DEBUG_YES, ID_DEBUG_NO,
     ID_LOG_YES, ID_LOG_NO, ID_DISCORD_YES, ID_DISCORD_NO, ID_DC_YES, ID_DC_NO, ID_PROTO_YES, ID_PROTO_NO, ID_MOV_DC, ID_MOV_PC, ID_MOV_PSX, ID_NOLB_YES, ID_NOLB_NO, ID_FPS, ID_CONTROLS, ID_JOYSTICK,
-    ID_PARAMS, ID_PLAY, ID_UPDATE, ID_QOLS, ID_FOCUS, ID_EXTRACT_EARLIER, ID_LOAD_EARLIER,
+    ID_PARAMS, ID_PLAY, ID_UPDATE, ID_QOLS, ID_FOCUS, ID_EXTRACT_EARLIER, ID_LOAD_EARLIER, ID_MODS,
 };
 
 typedef struct { int w, h; } Resolution;
@@ -364,6 +365,7 @@ static void build_ui(HWND hwnd)
         L"How 3D textures are drawn. Off keeps the sharp pixels of the PlayStation, Bilinear smooths them.");
     y += 36;
     yes_no_row(hwnd, L"Use PGXP", 24, y, 96, 124, ID_PGXP_YES,
+        L"EXPERIMENTAL: may cause visual artifacts. "
         L"Places 3D geometry with sub-pixel precision instead of snapping it to whole PlayStation pixels, "
         L"which reduces the wobbling of polygons as they move.");
     y += 36;
@@ -409,6 +411,7 @@ static void build_ui(HWND hwnd)
         L"(or an image of it) in the movies folder. PSX: the PlayStation's own.");
     y += 36;
     yes_no_row(hwnd, L"Use DC Models", 336, y, 144, 484, ID_DC_YES,
+        L"EXPERIMENTAL: may cause visual artifacts or change how the game plays. "
         L"Draws Raziel and Kain with their more detailed models from the Dreamcast version. "
         L"Needs your own dump of the Dreamcast disc (the .gdi file and its track files) "
         L"in the dreamcast folder next to the game.");
@@ -427,6 +430,8 @@ static void build_ui(HWND hwnd)
     option_tip(hwnd, lbl, ID_CONTROLS, 0, L"Change the keys for each action, with an alternate key for each (the arrow keys also move), and the mouse buttons for attacking, telekinesis and aiming.");
     control(hwnd, L"BUTTON", L"QoLs", BS_PUSHBUTTON | WS_TABSTOP, 488, 424, 64, 26, ID_QOLS);
     tooltip(hwnd, GetDlgItem(hwnd, ID_QOLS), L"Quality-of-life options, such as keeping the enemies of the block puzzles from coming back.");
+    control(hwnd, L"BUTTON", L"Mods", BS_PUSHBUTTON | WS_TABSTOP, 560, 424, 80, 26, ID_MODS);
+    tooltip(hwnd, GetDlgItem(hwnd, ID_MODS), L"Optional changes to the game, such as playing the intro movie from Soul Reaver 2.");
 
     /* the prototypes' maps, for the Area list */
     control(hwnd, L"BUTTON", L"Extract Earlier Areas", BS_PUSHBUTTON | WS_TABSTOP, 24, 424, 146, 26, ID_EXTRACT_EARLIER);
@@ -756,6 +761,27 @@ static int play(void)
         return 0;
     }
 
+    /* the experimental options: the player confirms */
+    if (settings.pgxp || settings.dcModels)
+    {
+        wchar_t text[700];
+        const wchar_t *which = (settings.pgxp && settings.dcModels) ? L"\"Use PGXP\" and \"Use DC Models\" are" :
+            (settings.pgxp ? L"\"Use PGXP\" is" : L"\"Use DC Models\" is");
+        int both = settings.pgxp && settings.dcModels;
+
+        swprintf(text, 700,
+            L"%s on.\n\n%s still EXPERIMENTAL: %s may cause visual artifacts or change how the game plays "
+            L"in ways it shouldn't, and %s not recommended for a first run.\n\n"
+            L"Do you want to play with %s on anyway?",
+            which, both ? L"Both features are" : L"This feature is", both ? L"they" : L"it", both ? L"are" : L"is",
+            both ? L"them" : L"it");
+
+        if (MessageBoxW(main_window, text, L"Experimental Features", MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2) != IDYES)
+        {
+            return 0;
+        }
+    }
+
     GetModuleFileNameW(NULL, dir, MAX_PATH);
     slash = wcsrchr(dir, L'\\');
 
@@ -989,6 +1015,9 @@ static LRESULT CALLBACK main_proc_options(HWND hwnd, UINT msg, WPARAM wp, LPARAM
             return 0;
         case ID_QOLS:
             qols_dialog(hwnd, &settings, ui_font, dpi);
+            return 0;
+        case ID_MODS:
+            mods_dialog(hwnd, &settings, ui_font, dpi);
             return 0;
         case ID_EXTRACT_EARLIER:
             earlier_extract_dialog(hwnd, ui_font, dpi);

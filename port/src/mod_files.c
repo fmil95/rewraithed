@@ -24,6 +24,8 @@
 
 typedef void (*port_mod_file_cb)(const char *game_path, const char *disk_path, void *ctx);
 void port_scan_mods_folder(port_mod_file_cb cb, void *ctx);  /* port/src/native */
+void port_scan_folder(const char *folder, port_mod_file_cb cb, void *ctx);
+void port_scan_mod_folder(const char *name, port_mod_file_cb cb, void *ctx);
 
 void LOAD_InitCdLoader_psx(char *bigFileName, char *voiceFileName);
 BigFileEntry *LOAD_GetBigFileEntryByHash_psx(long hash);
@@ -516,7 +518,8 @@ static void add_proto_assets(void)
  * The maps a prototype's disc had, extracted by the launcher to
  * proto\<date>\areas (port/shared/proto_areas.c), are served in place of the
  * disc's: every map that has the same name, and the ones the July build lacks.
- * They come before the mods folder's. A file is read when the game first asks
+ * They come before the mods folder's; edits of them go in proto\<date>\mods
+ * (the level editor's), which comes first. A file is read when the game first asks
  * for it. A map the July build lacks has no bigfile directory: the game gets
  * the directory of another map of its area (LOAD_ChangeDirectoryByID, a fixup
  * in port/fixups.cmake), and any object or sound none of the two directories
@@ -685,6 +688,23 @@ static void add_earlier_areas(void)
         return;
     }
 
+    /* the prototype's own mods (proto\<date>\mods, where the level editor
+     * installs edits of its maps) come before its maps; the mods folder's come
+     * after them */
+    {
+        char own_mods[MAX_PATH_LENGTH];
+        size_t n;
+
+        snprintf(own_mods, sizeof(own_mods), "%s", earlier_folder);
+        n = strlen(own_mods);
+
+        if ((n > 6) && (_stricmp(own_mods + n - 6, "\\areas") == 0))
+        {
+            snprintf(own_mods + n - 6, sizeof(own_mods) - (n - 6), "\\mods");
+            port_scan_folder(own_mods, add_mod_file, NULL);
+        }
+    }
+
     proto_areas_read(earlier_date, earlier_unit, earlier_file, NULL);
     read_disc_directories();
 
@@ -808,6 +828,30 @@ static int load_mod_file(ModFile *m)
     return 1;
 }
 
+/* --- mod folders (the launcher's Mods window, port/shared/mod_folders.h) ---
+ * The mods folder's folders with a mod.ini that [Mods] turns on, in the
+ * window's order (folder names alphabetically), each before the next and
+ * before the mods folder's loose files: the first file for a path wins. */
+static void add_mod_folders(void)
+{
+    static FolderMod folders[MAX_FOLDER_MODS];
+    int count = mod_folders_list(folders, MAX_FOLDER_MODS);
+    int i, k;
+
+    for (i = 0; i < count; i++)
+    {
+        for (k = 0; k < port_settings.folderModCount; k++)
+        {
+            if (_stricmp(port_settings.folderMods[k], folders[i].folder) == 0)
+            {
+                printf("[rewraithed] mods: %s (mods\\%s)\n", folders[i].name, folders[i].folder);
+                port_scan_mod_folder(folders[i].folder, add_mod_file, NULL);
+                break;
+            }
+        }
+    }
+}
+
 /* For the CD drive: puts the patched directory table into the bigfile's first sectors. */
 void port_mod_patch_sector(int lba, unsigned char *data)
 {
@@ -834,6 +878,7 @@ void LOAD_InitCdLoader(char *bigFileName, char *voiceFileName)
         mod_next_lba = port_cd_image_sectors() + 1000;
 
         add_earlier_areas();
+        add_mod_folders();
         port_scan_mods_folder(add_mod_file, NULL);
         add_proto_assets();
 
