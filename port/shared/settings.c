@@ -62,11 +62,27 @@ void port_settings_defaults(PortSettings *s)
 
     memset(s, 0, sizeof(*s));
 
-    s->display = DISPLAY_WINDOWED;
+    /* fullscreen at the desktop's own resolution and refresh rate */
+    s->display = DISPLAY_FULLSCREEN;
     s->width = 1280;
     s->height = 960;
     s->refresh = 0;
-    s->scaleLinear = 1;
+
+    {
+        DEVMODEA mode;
+
+        memset(&mode, 0, sizeof(mode));
+        mode.dmSize = sizeof(mode);
+
+        if (EnumDisplaySettingsA(NULL, ENUM_CURRENT_SETTINGS, &mode) && (mode.dmPelsWidth >= 640) && (mode.dmPelsHeight >= 480))
+        {
+            s->width = (int)mode.dmPelsWidth;
+            s->height = (int)mode.dmPelsHeight;
+            s->refresh = (mode.dmDisplayFrequency > 1) ? (int)mode.dmDisplayFrequency : 0;
+        }
+    }
+
+    s->scaleLinear = 0;
     s->vsync = 1;
     s->focusWindow = 1;
     s->pillarbox = 1;
@@ -75,12 +91,14 @@ void port_settings_defaults(PortSettings *s)
     s->antialiasing = 0;
 
     s->skipIntros = SKIP_NONE;
-    s->dithering = 1;
+    s->dithering = 0;
     s->preloadChunks = 0;
-    s->debugMenu = 0;
-    s->logging = 0;
-    s->fpsLimit = 30;
+    s->debugMenu = 1;
+    s->logging = 1;
+    s->fpsLimit = 60;
     s->discordPresence = 1;
+    s->underChargers = 1;
+    s->noPuzzleRespawn = 1;
 
     for (i = 0; i < BIND_COUNT; i++)
     {
