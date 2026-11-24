@@ -51,7 +51,9 @@ void proto_disc_folder(char *out, size_t size)
     snprintf(out, size, "%s\\proto", exe);
 }
 
-long proto_hash_name(const char *path)
+/* LOAD_HashName; the early (January to February) builds' version counts the
+ * backslashes too */
+static long hash_path(const char *path, int skipSlash)
 {
     static const char *const extensions[] = { "drm", "crm", "tim", "smp", "snd", "smf", "snf" };
     long strl = (long)strlen(path) - 1;
@@ -80,7 +82,7 @@ long proto_hash_name(const char *path)
     {
         int c = (unsigned char)path[strl--];
 
-        if (c == '\\')
+        if (skipSlash && (c == '\\'))
         {
             continue;
         }
@@ -92,6 +94,11 @@ long proto_hash_name(const char *path)
     }
 
     return (long)(((unsigned long)length << 27) | ((unsigned long)total << 15) | ((unsigned long)xorValue << 3) | (unsigned long)ext);
+}
+
+long proto_hash_name(const char *path)
+{
+    return hash_path(path, 1);
 }
 
 static int cd_open(CdImage *cd, const char *path)
@@ -214,48 +221,60 @@ static int cd_find_bigfile(CdImage *cd, long *lba, long *size)
     return 0;
 }
 
-unsigned char *proto_disc_read(const char *image, const char *gamePath, long *size)
+struct ProtoBigFile
 {
     CdImage cd;
-    unsigned char word[8];
-    unsigned char *subdirs = NULL;
-    unsigned char *result = NULL;
-    long bigLba;
-    long bigSize;
-    long numDirs;
-    long hash = proto_hash_name(gamePath);
+    long lba;
+    long size;
+    int early;          /* the flat table of the January to February builds */
+    long count;
+    long *entries;      /* hash, length, position: sorted by hash */
+};
+
+static int compare_entries(const void *a, const void *b)
+{
+    long x = *(const long *)a;
+    long y = *(const long *)b;
+
+    return (x < y) ? -1 : (x > y);
+}
+
+/* by hash, then by the order read */
+static int compare_pairs(const void *a, const void *b)
+{
+    const long *x = (const long *)a;
+    const long *y = (const long *)b;
+
+    if (x[0] != y[0])
+    {
+        return (x[0] < y[0]) ? -1 : 1;
+    }
+
+    return (x[1] < y[1]) ? -1 : (x[1] > y[1]);
+}
+
+/* the files of every directory, the root (0) first: the first of a hash wins */
+static int read_directories(ProtoBigFile *bf, long numDirs)
+{
+    unsigned char word[4];
+    unsigned char *subdirs = (unsigned char *)malloc(numDirs * 8);
     long d;
 
-    if (!cd_open(&cd, image))
-    {
-        return NULL;
-    }
-
-    if (!cd_find_bigfile(&cd, &bigLba, &bigSize) || !cd_read(&cd, bigLba, 0, 4, word))
-    {
-        fclose(cd.f);
-        return NULL;
-    }
-
-    numDirs = le32(word);
-
-    if ((numDirs <= 0) || (numDirs > 4096) || ((subdirs = (unsigned char *)malloc(numDirs * 8)) == NULL) ||
-        !cd_read(&cd, bigLba, 4, numDirs * 8, subdirs))
+    if ((subdirs == NULL) || !cd_read(&bf->cd, bf->lba, 4, numDirs * 8, subdirs))
     {
         free(subdirs);
-        fclose(cd.f);
-        return NULL;
+        return 0;
     }
 
-    /* every directory, the root (0) included */
-    for (d = 0; (d < numDirs) && (result == NULL); d++)
+    for (d = 0; d < numDirs; d++)
     {
         long dirOffset = le32(subdirs + d * 8 + 4);
         long numFiles;
         unsigned char *files;
+        long *grown;
         long i;
 
-        if (!cd_read(&cd, bigLba, dirOffset, 4, word))
+        if (!cd_read(&bf->cd, bf->lba, dirOffset, 4, word))
         {
             continue;
         }
@@ -267,39 +286,208 @@ unsigned char *proto_disc_read(const char *image, const char *gamePath, long *si
             continue;
         }
 
-        if (cd_read(&cd, bigLba, dirOffset + 4, numFiles * 16, files))
+        grown = (long *)realloc(bf->entries, (bf->count + numFiles) * 3 * sizeof(long));
+
+        if ((grown != NULL) && cd_read(&bf->cd, bf->lba, dirOffset + 4, numFiles * 16, files))
         {
+            bf->entries = grown;
+
             for (i = 0; i < numFiles; i++)
             {
-                if (le32(files + i * 16) == hash)
-                {
-                    long length = le32(files + i * 16 + 4);
-                    long filePos = le32(files + i * 16 + 8);
+                long *e = bf->entries + bf->count * 3;
 
-                    if ((length > 0) && (filePos >= 0) && (filePos + length <= bigSize) &&
-                        ((result = (unsigned char *)malloc(length)) != NULL))
-                    {
-                        if (cd_read(&cd, bigLba, filePos, length, result))
-                        {
-                            *size = length;
-                        }
-                        else
-                        {
-                            free(result);
-                            result = NULL;
-                        }
-                    }
-
-                    break;
-                }
+                e[0] = le32(files + i * 16);
+                e[1] = le32(files + i * 16 + 4);
+                e[2] = le32(files + i * 16 + 8);
+                bf->count++;
             }
+        }
+        else if (grown != NULL)
+        {
+            bf->entries = grown;
         }
 
         free(files);
     }
 
     free(subdirs);
-    fclose(cd.f);
+
+    return bf->count > 0;
+}
+
+/* the early builds: long numFiles; { hash, length, ?, position, checksum, ? } [numFiles] */
+static int read_flat_table(ProtoBigFile *bf, long numFiles)
+{
+    unsigned char *files = (unsigned char *)malloc(numFiles * 24);
+    long i;
+
+    bf->entries = (long *)malloc(numFiles * 3 * sizeof(long));
+
+    if ((files == NULL) || (bf->entries == NULL) || !cd_read(&bf->cd, bf->lba, 4, numFiles * 24, files))
+    {
+        free(files);
+        return 0;
+    }
+
+    for (i = 0; i < numFiles; i++)
+    {
+        bf->entries[i * 3] = le32(files + i * 24);
+        bf->entries[i * 3 + 1] = le32(files + i * 24 + 4);
+        bf->entries[i * 3 + 2] = le32(files + i * 24 + 12);
+    }
+
+    bf->count = numFiles;
+    free(files);
+
+    return 1;
+}
+
+ProtoBigFile *proto_bigfile_open(const char *image)
+{
+    ProtoBigFile *bf = (ProtoBigFile *)calloc(1, sizeof(ProtoBigFile));
+    unsigned char head[12];
+    long num;
+    long firstOffset;
+    int ok;
+
+    if ((bf == NULL) || !cd_open(&bf->cd, image))
+    {
+        free(bf);
+        return NULL;
+    }
+
+    if (!cd_find_bigfile(&bf->cd, &bf->lba, &bf->size) || !cd_read(&bf->cd, bf->lba, 0, 12, head))
+    {
+        proto_bigfile_close(bf);
+        return NULL;
+    }
+
+    num = le32(head);
+    /* the first directory's files follow the directory table (rounded up to a
+     * sector); in the flat table that word is a file's length */
+    firstOffset = le32(head + 8);
+
+    if ((num <= 0) || (num > 65536))
+    {
+        proto_bigfile_close(bf);
+        return NULL;
+    }
+
+    if ((firstOffset >= 4 + num * 8) && (firstOffset <= 4 + num * 8 + USER_DATA))
+    {
+        ok = read_directories(bf, num);
+    }
+    else
+    {
+        bf->early = 1;
+        ok = read_flat_table(bf, num);
+    }
+
+    if (!ok)
+    {
+        proto_bigfile_close(bf);
+        return NULL;
+    }
+
+    /* stable for equal hashes: the first one read stays first */
+    {
+        long i;
+        long *keyed = (long *)malloc(bf->count * 4 * sizeof(long));
+
+        if (keyed != NULL)
+        {
+            for (i = 0; i < bf->count; i++)
+            {
+                keyed[i * 4] = bf->entries[i * 3];
+                keyed[i * 4 + 1] = i;
+                keyed[i * 4 + 2] = bf->entries[i * 3 + 1];
+                keyed[i * 4 + 3] = bf->entries[i * 3 + 2];
+            }
+
+            qsort(keyed, bf->count, 4 * sizeof(long), compare_pairs);
+
+            for (i = 0; i < bf->count; i++)
+            {
+                bf->entries[i * 3] = keyed[i * 4];
+                bf->entries[i * 3 + 1] = keyed[i * 4 + 2];
+                bf->entries[i * 3 + 2] = keyed[i * 4 + 3];
+            }
+
+            free(keyed);
+        }
+    }
+
+    return bf;
+}
+
+void proto_bigfile_close(ProtoBigFile *bf)
+{
+    if (bf != NULL)
+    {
+        if (bf->cd.f != NULL)
+        {
+            fclose(bf->cd.f);
+        }
+
+        free(bf->entries);
+        free(bf);
+    }
+}
+
+int proto_bigfile_early(const ProtoBigFile *bf)
+{
+    return bf->early;
+}
+
+int proto_bigfile_has(const ProtoBigFile *bf, const char *gamePath)
+{
+    long hash = hash_path(gamePath, !bf->early);
+    const long *e = (const long *)bsearch(&hash, bf->entries, bf->count, 3 * sizeof(long), compare_entries);
+
+    return (e != NULL) && (e[1] > 0);
+}
+
+unsigned char *proto_bigfile_read(ProtoBigFile *bf, const char *gamePath, long *size)
+{
+    long hash = hash_path(gamePath, !bf->early);
+    const long *e = (const long *)bsearch(&hash, bf->entries, bf->count, 3 * sizeof(long), compare_entries);
+    unsigned char *result;
+
+    /* bsearch may land on any of equal hashes: go to the first */
+    while ((e != NULL) && (e > bf->entries) && (e[-3] == hash))
+    {
+        e -= 3;
+    }
+
+    if ((e == NULL) || (e[1] <= 0) || (e[2] < 0) || (e[2] + e[1] > bf->size) ||
+        ((result = (unsigned char *)malloc(e[1])) == NULL))
+    {
+        return NULL;
+    }
+
+    if (!cd_read(&bf->cd, bf->lba, e[2], e[1], result))
+    {
+        free(result);
+        return NULL;
+    }
+
+    *size = e[1];
+
+    return result;
+}
+
+unsigned char *proto_disc_read(const char *image, const char *gamePath, long *size)
+{
+    ProtoBigFile *bf = proto_bigfile_open(image);
+    unsigned char *result;
+
+    if (bf == NULL)
+    {
+        return NULL;
+    }
+
+    result = proto_bigfile_read(bf, gamePath, size);
+    proto_bigfile_close(bf);
 
     return result;
 }
@@ -398,15 +586,14 @@ static int is_april_glyph_object(const char *image)
     return april;
 }
 
-int proto_disc_locate(char *image, size_t imageSize, char *problem, size_t problemSize)
+/* Calls `check` with each disc image in `folder` (a .cue's image, then .bin,
+ * .img and .iso files) until it returns 1; 1 and that image's path then. */
+static int each_image(const char *folder, int (*check)(const char *image, void *ctx), void *ctx,
+    char *image, size_t imageSize, int *sawImage)
 {
     static const char *const patterns[] = { "*.cue", "*.bin", "*.img", "*.iso" };
-    char folder[MAX_PATH];
     char candidate[MAX_PATH];
-    int sawImage = 0;
     int p;
-
-    proto_disc_folder(folder, sizeof(folder));
 
     for (p = 0; p < 4; p++)
     {
@@ -424,9 +611,6 @@ int proto_disc_locate(char *image, size_t imageSize, char *problem, size_t probl
 
         do
         {
-            unsigned char *sheet;
-            long size = 0;
-
             snprintf(candidate, sizeof(candidate), "%s\\%s", folder, found.cFileName);
 
             if ((p == 0) && !cue_image(candidate, candidate, sizeof(candidate)))
@@ -434,24 +618,99 @@ int proto_disc_locate(char *image, size_t imageSize, char *problem, size_t probl
                 continue;
             }
 
-            sawImage = 1;
-            sheet = proto_disc_read(candidate, PROTO_CHECK_FILE, &size);
-
-            if (sheet != NULL)
+            if (sawImage != NULL)
             {
-                free(sheet);
+                *sawImage = 1;
+            }
 
-                if ((size == 8228) && is_april_glyph_object(candidate))
+            if (check(candidate, ctx))
+            {
+                FindClose(h);
+
+                if ((image != NULL) && (imageSize > 0))
                 {
-                    FindClose(h);
-
-                    if ((image != NULL) && (imageSize > 0))
-                    {
-                        snprintf(image, imageSize, "%s", candidate);
-                    }
-
-                    return 1;
+                    snprintf(image, imageSize, "%s", candidate);
                 }
+
+                return 1;
+            }
+        } while (FindNextFileA(h, &found));
+
+        FindClose(h);
+    }
+
+    return 0;
+}
+
+static int has_bigfile(const char *image, void *ctx)
+{
+    ProtoBigFile *bf = proto_bigfile_open(image);
+
+    (void)ctx;
+    proto_bigfile_close(bf);
+
+    return bf != NULL;
+}
+
+int proto_disc_image_in(const char *folder, char *image, size_t imageSize)
+{
+    return each_image(folder, has_bigfile, NULL, image, imageSize, NULL);
+}
+
+static int is_april_disc(const char *image, void *ctx)
+{
+    long size = 0;
+    unsigned char *sheet = proto_disc_read(image, PROTO_CHECK_FILE, &size);
+
+    (void)ctx;
+
+    if (sheet == NULL)
+    {
+        return 0;
+    }
+
+    free(sheet);
+
+    return (size == 8228) && is_april_glyph_object(image);
+}
+
+/* in the proto folder, or one of its folders (Extract Earlier Areas puts each
+ * prototype in a folder named by its date) */
+int proto_disc_locate(char *image, size_t imageSize, char *problem, size_t problemSize)
+{
+    char folder[MAX_PATH];
+    char pattern[MAX_PATH];
+    WIN32_FIND_DATAA found;
+    HANDLE h;
+    int sawImage = 0;
+
+    proto_disc_folder(folder, sizeof(folder));
+
+    if (each_image(folder, is_april_disc, NULL, image, imageSize, &sawImage))
+    {
+        return 1;
+    }
+
+    snprintf(pattern, sizeof(pattern), "%s\\*", folder);
+    h = FindFirstFileA(pattern, &found);
+
+    if (h != INVALID_HANDLE_VALUE)
+    {
+        do
+        {
+            char sub[MAX_PATH];
+
+            if (!(found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (found.cFileName[0] == '.'))
+            {
+                continue;
+            }
+
+            snprintf(sub, sizeof(sub), "%s\\%s", folder, found.cFileName);
+
+            if (each_image(sub, is_april_disc, NULL, image, imageSize, &sawImage))
+            {
+                FindClose(h);
+                return 1;
             }
         } while (FindNextFileA(h, &found));
 
@@ -462,7 +721,7 @@ int proto_disc_locate(char *image, size_t imageSize, char *problem, size_t probl
     {
         if (sawImage)
         {
-            snprintf(problem, problemSize, "The disc image in %s is not the April 14, 1999 prototype.", folder);
+            snprintf(problem, problemSize, "None of the disc images in %s is the April 14, 1999 prototype.", folder);
         }
         else
         {

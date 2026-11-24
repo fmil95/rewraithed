@@ -19,6 +19,7 @@
 #include "controls.h"
 #include "joystick.h"
 #include "qols.h"
+#include "earlier.h"
 #include "update.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
@@ -30,7 +31,7 @@ enum
     ID_FILTERING, ID_AA, ID_AREA,
     ID_SKIP, ID_DITHER, ID_PRELOAD_YES, ID_PRELOAD_NO, ID_DEBUG_YES, ID_DEBUG_NO,
     ID_LOG_YES, ID_LOG_NO, ID_DISCORD_YES, ID_DISCORD_NO, ID_DC_YES, ID_DC_NO, ID_PROTO_YES, ID_PROTO_NO, ID_MOV_DC, ID_MOV_PC, ID_MOV_PSX, ID_NOLB_YES, ID_NOLB_NO, ID_FPS, ID_CONTROLS, ID_JOYSTICK,
-    ID_PARAMS, ID_PLAY, ID_UPDATE, ID_QOLS, ID_FOCUS,
+    ID_PARAMS, ID_PLAY, ID_UPDATE, ID_QOLS, ID_FOCUS, ID_EXTRACT_EARLIER, ID_LOAD_EARLIER,
 };
 
 typedef struct { int w, h; } Resolution;
@@ -414,7 +415,8 @@ static void build_ui(HWND hwnd)
     y += 36;
     yes_no_row(hwnd, L"Use Proto Assets", 336, y, 144, 484, ID_PROTO_YES,
         L"Uses assets from the April 14, 1999 prototype that the July build lacks: the Spirit Glyph's own icon "
-        L"(with -uncut). Needs your own image of that prototype's disc in the proto folder next to the game.");
+        L"(with -uncut). Needs your own image of that prototype's disc in the proto folder next to the game, "
+        L"or in a folder inside it (as Extract Earlier Areas leaves it).");
 
     /* last row of the box, just above QoLs and the buttons */
     y = 372;
@@ -425,6 +427,16 @@ static void build_ui(HWND hwnd)
     option_tip(hwnd, lbl, ID_CONTROLS, 0, L"Change the keys for each action, with an alternate key for each (the arrow keys also move), and the mouse buttons for attacking, telekinesis and aiming.");
     control(hwnd, L"BUTTON", L"QoLs", BS_PUSHBUTTON | WS_TABSTOP, 488, 424, 64, 26, ID_QOLS);
     tooltip(hwnd, GetDlgItem(hwnd, ID_QOLS), L"Quality-of-life options, such as keeping the enemies of the block puzzles from coming back.");
+
+    /* the prototypes' maps, for the Area list */
+    control(hwnd, L"BUTTON", L"Extract Earlier Areas", BS_PUSHBUTTON | WS_TABSTOP, 24, 424, 146, 26, ID_EXTRACT_EARLIER);
+    tooltip(hwnd, GetDlgItem(hwnd, ID_EXTRACT_EARLIER),
+        L"Unpacks the prototypes of the game you put in the proto folder next to the game (their .7z or .zip "
+        L"archives, with the date in their names), each into a folder named by its date, and copies out their maps.");
+    control(hwnd, L"BUTTON", L"Load Earlier Areas", BS_PUSHBUTTON | WS_TABSTOP, 176, 424, 140, 26, ID_LOAD_EARLIER);
+    tooltip(hwnd, GetDlgItem(hwnd, ID_LOAD_EARLIER),
+        L"Choose a prototype and one of its maps to start in, as with Area. Its maps then stand in for the game's "
+        L"own wherever you go.");
 
     /* --- bottom: the Area list as wide as its longest name, then Parameters
      * up to the buttons --- */
@@ -510,6 +522,29 @@ static void build_ui(HWND hwnd)
     combo_add(ID_FPS, L"60");
 }
 
+/* the Area list's entry after the game's areas: the map chosen with Load
+ * Earlier Areas, if one is */
+static void area_earlier_item(void)
+{
+    int count = (int)SendDlgItemMessageW(main_window, ID_AREA, CB_GETCOUNT, 0, 0);
+
+    if (count > COUNT(launcher_areas) + 1)
+    {
+        SendDlgItemMessageW(main_window, ID_AREA, CB_DELETESTRING, COUNT(launcher_areas) + 1, 0);
+    }
+
+    if (settings.earlierAreas[0] != '\0')
+    {
+        wchar_t date[32];
+        wchar_t text[64];
+
+        earlier_date_text(settings.earlierAreas, date, 32);
+        _snwprintf(text, 64, L"%s: %hs", date, settings.area);
+        text[63] = L'\0';
+        combo_add(ID_AREA, text);
+    }
+}
+
 static void show_settings(void)
 {
     int i;
@@ -585,6 +620,7 @@ static void show_settings(void)
     }
 
     sel = 0;
+    area_earlier_item();
 
     for (i = 0; i < COUNT(launcher_areas); i++)
     {
@@ -593,6 +629,11 @@ static void show_settings(void)
             sel = i + 1;
             break;
         }
+    }
+
+    if (settings.earlierAreas[0] != '\0')
+    {
+        sel = COUNT(launcher_areas) + 1;
     }
 
     combo_set(ID_AREA, sel);
@@ -657,7 +698,18 @@ static void read_settings(void)
     settings.antialiasing = aa_values[combo_get(ID_AA)];
 
     sel = combo_get(ID_AREA);
-    snprintf(settings.area, sizeof(settings.area), "%s", (sel > 0) ? launcher_areas[sel - 1].unit : "");
+
+    /* the earlier area stays until another is chosen */
+    if ((sel <= COUNT(launcher_areas)) || (settings.earlierAreas[0] == '\0'))
+    {
+        snprintf(settings.area, sizeof(settings.area), "%s", (sel > 0) ? launcher_areas[sel - 1].unit : "");
+
+        if (settings.earlierAreas[0] != '\0')
+        {
+            settings.earlierAreas[0] = '\0';
+            area_earlier_item();
+        }
+    }
 
     settings.skipIntros = combo_get(ID_SKIP);
     settings.dithering = combo_get(ID_DITHER) == 1;
@@ -828,7 +880,7 @@ static LRESULT CALLBACK main_proc_options(HWND hwnd, UINT msg, WPARAM wp, LPARAM
         {
             char problem[700];
             char folder[MAX_PATH];
-            wchar_t text[1200];
+            wchar_t text[2000];
             HCURSOR old = SetCursor(LoadCursor(NULL, IDC_WAIT));
             int found = proto_disc_locate(NULL, 0, problem, sizeof(problem));
 
@@ -839,10 +891,13 @@ static LRESULT CALLBACK main_proc_options(HWND hwnd, UINT msg, WPARAM wp, LPARAM
                 proto_disc_folder(folder, sizeof(folder));
                 CreateDirectoryA(folder, NULL);
 
-                swprintf(text, 1200,
+                swprintf(text, 2000,
                     L"The prototype assets are read from your own copy of the April 14, 1999 prototype of Soul Reaver.\n\n"
-                    L"Place your image of its disc (the .cue and .bin, or the .bin alone) in this folder:\n\n%hs\n\n"
-                    L"then choose Yes again.\n\n(%hs)", folder, problem);
+                    L"Place your image of its disc (the .cue and .bin, or the .bin alone) in this folder, or in a folder "
+                    L"inside it:\n\n%hs\n\n"
+                    L"or place the prototype's archive (.7z or .zip, with its date in the name) there and press "
+                    L"Extract Earlier Areas, which unpacks it into the 1999-04-14 folder. Then choose Yes again.\n\n(%hs)",
+                    folder, problem);
                 MessageBoxW(hwnd, text, L"Use Proto Assets", MB_ICONINFORMATION);
                 yes_no_set(ID_PROTO_YES, 0);
                 return 0;
@@ -934,6 +989,16 @@ static LRESULT CALLBACK main_proc_options(HWND hwnd, UINT msg, WPARAM wp, LPARAM
             return 0;
         case ID_QOLS:
             qols_dialog(hwnd, &settings, ui_font, dpi);
+            return 0;
+        case ID_EXTRACT_EARLIER:
+            earlier_extract_dialog(hwnd, ui_font, dpi);
+            return 0;
+        case ID_LOAD_EARLIER:
+            if (earlier_load_dialog(hwnd, &settings, ui_font, dpi))
+            {
+                area_earlier_item();
+                combo_set(ID_AREA, COUNT(launcher_areas) + 1);
+            }
             return 0;
         case ID_PLAY:
             if (play())

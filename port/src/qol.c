@@ -18,6 +18,8 @@
 
 #include "settings.h"
 
+int port_earlier_areas_on(void);   /* port/src/mod_files.c */
+
 static const char *const port_puzzle_units[] = { "cathy13", "cathy59", "cathy60" };
 
 static int port_is_puzzle_unit(long streamUnitID)
@@ -261,7 +263,7 @@ static int port_chargers_shown(void)
  * rechargers come in hidden (intro flag 0x80) until they are to be shown */
 void port_qol_introduce(Intro *intro, short streamUnitID)
 {
-    if (!port_settings.underChargers || (intro == NULL) || !port_is_charger(intro->name) || !port_in_under1(streamUnitID))
+    if (!port_settings.underChargers || port_earlier_areas_on() || (intro == NULL) || !port_is_charger(intro->name) || !port_in_under1(streamUnitID))
     {
         return;
     }
@@ -333,7 +335,7 @@ void port_qol_frame(void)
     int shown = 0;
     int checked = 0;
 
-    if (!port_settings.underChargers || (gameTrackerX.instanceList == NULL))
+    if (!port_settings.underChargers || port_earlier_areas_on() || (gameTrackerX.instanceList == NULL))
     {
         return;
     }

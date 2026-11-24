@@ -1008,3 +1008,19 @@ game_fixup(Game/GAMELOOP.c
     FIND    "    DEBUG_Draw(gameTracker, drawot);\n"
     REPLACE "    {\n        extern void port_qol_frame(void);\n\n        port_qol_frame();\n    }\n\n    DEBUG_Draw(gameTracker, drawot);\n")
 
+
+# Earlier areas (port/src/mod_files.c): a prototype's map that the July build
+# lacks has no bigfile directory; it gets another map's of its area instead of
+# "Could not read directory hash".
+game_fixup(Game/LOAD3D.c
+    FIND    "int LOAD_ChangeDirectoryByID(int id)\n{"
+    REPLACE "int port_earlier_directory(int id, const BigFileDirEntry *list, int count);\n\nint LOAD_ChangeDirectoryByID(int id)\n{")
+game_fixup(Game/LOAD3D.c
+    FIND    "                if (id == loadStatus.bigFile.subDirList[i].streamUnitID)\n"
+    REPLACE "                if ((id == loadStatus.bigFile.subDirList[i].streamUnitID) ||\n                    (i == port_earlier_directory(id, loadStatus.bigFile.subDirList, loadStatus.bigFile.numSubDirs)))\n")
+
+# A fatal error (only drawn on screen, where the game then stops) goes to the
+# log too.
+game_fixup(Game/DEBUG.c
+    FIND    "    vsprintf(msg, fmt, ap);\n    FONT_Print(msg);\n"
+    REPLACE "    vsprintf(msg, fmt, ap);\n    printf(\"[rewraithed] fatal error: %s\\n\", msg);\n    fflush(stdout);\n    FONT_Print(msg);\n")

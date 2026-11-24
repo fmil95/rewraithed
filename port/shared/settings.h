@@ -49,6 +49,8 @@ typedef struct
 
     /* game */
     char area[16];          /* start area, empty for the disc's */
+    char earlierAreas[16];  /* a prototype's date: its maps replace the disc's
+                               (port/shared/proto_areas.h); empty for none */
     int skipIntros;         /* SKIP_* */
     int dithering;
     int preloadChunks;      /* load every neighbouring stream unit at once */

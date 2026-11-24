@@ -18,7 +18,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_MOD_FILES 256
+#define MAX_MOD_FILES 4096
+#define MAX_PATH_LENGTH 260
 #define SECTOR_DATA   2048
 
 typedef void (*port_mod_file_cb)(const char *game_path, const char *disk_path, void *ctx);
@@ -36,6 +37,9 @@ typedef struct ModFile
     int sectors;
     int reported;
     int is_dir;             /* a virtual bigfile directory, not a file */
+    char disk[MAX_PATH_LENGTH]; /* an earlier area's file, read when first needed */
+    long size;              /* and its length */
+    int fallback;           /* an earlier object: only if the disc lacks it */
     BigFileEntry entry;
 } ModFile;
 
@@ -324,7 +328,7 @@ static void build_unit_directories(void)
         n = 0;
         for (i = 0; i < mod_count; i++)
         {
-            n += !mod_files[i].is_dir;
+            n += !mod_files[i].is_dir && !mod_files[i].fallback;
         }
 
         total = 4 + (src_files + n) * 16;
@@ -345,7 +349,7 @@ static void build_unit_directories(void)
         {
             unsigned char *e;
 
-            if (mod_files[i].is_dir)
+            if (mod_files[i].is_dir || mod_files[i].fallback)
             {
                 continue;
             }
@@ -507,6 +511,303 @@ static void add_proto_assets(void)
     free(april);
 }
 
+/* --- earlier areas (Load Earlier Areas in the launcher, EarlierAreas in
+ * rewraithed.ini, or -earlierareas <date>) ---
+ * The maps a prototype's disc had, extracted by the launcher to
+ * proto\<date>\areas (port/shared/proto_areas.c), are served in place of the
+ * disc's: every map that has the same name, and the ones the July build lacks.
+ * They come before the mods folder's. A file is read when the game first asks
+ * for it. A map the July build lacks has no bigfile directory: the game gets
+ * the directory of another map of its area (LOAD_ChangeDirectoryByID, a fixup
+ * in port/fixups.cmake), and any object or sound none of the two directories
+ * has is looked up in every directory of the disc. An object the disc lacks
+ * altogether comes from the prototype. */
+#include "proto_areas.h"
+
+const char *port_arg(const char *name);   /* port/src/pc_main.c */
+
+#define MAX_EARLIER_UNITS 1024
+
+static char earlier_date[PROTO_DATE_SIZE];
+static char earlier_folder[MAX_PATH_LENGTH];
+static short earlier_unit_ids[MAX_EARLIER_UNITS];
+static char earlier_unit_names[MAX_EARLIER_UNITS][PROTO_UNIT_SIZE];
+static int earlier_unit_count;
+
+/* the disc's directory table, and the files of all of its directories */
+static short *disc_dir_ids;
+static long disc_dir_count;
+static BigFileEntry *disc_entries;
+static long disc_entry_count;
+
+int port_earlier_areas_on(void)
+{
+    return earlier_date[0] != '\0';
+}
+
+static void earlier_unit(void *ctx, const char *unit, int startable)
+{
+    (void)ctx;
+    (void)startable;
+
+    if (earlier_unit_count < MAX_EARLIER_UNITS)
+    {
+        earlier_unit_ids[earlier_unit_count] = (short)LOAD_HashUnit((char *)unit);
+        snprintf(earlier_unit_names[earlier_unit_count], PROTO_UNIT_SIZE, "%s", unit);
+        earlier_unit_count++;
+    }
+}
+
+static void earlier_file(void *ctx, const char *game_path, long length, unsigned long sum, int object)
+{
+    ModFile *m;
+
+    (void)ctx;
+
+    if ((mod_count >= MAX_MOD_FILES) || (length <= 0))
+    {
+        return;
+    }
+
+    m = &mod_files[mod_count];
+    memset(m, 0, sizeof(*m));
+    snprintf(m->path, sizeof(m->path), "%s", game_path);
+    snprintf(m->disk, sizeof(m->disk), "%s%s", earlier_folder, game_path);
+    m->size = length;
+    m->fallback = object;
+    m->length = (length + 3) & ~3;
+    m->sectors = (m->length + SECTOR_DATA - 1) / SECTOR_DATA;
+    m->first_lba = mod_next_lba;
+    mod_next_lba += m->sectors;
+    m->entry.fileHash = LOAD_HashName(m->path);
+    m->entry.fileLen = m->length;
+    m->entry.checkSumFull = (long)sum;
+    mod_count++;
+}
+
+/* the directory table and every directory's files, for the lookups below */
+static void read_disc_directories(void)
+{
+    unsigned char word[4];
+    unsigned char *dirs;
+    long d;
+
+    if (!read_bigfile(0, word, 4) || ((disc_dir_count = get32(word)) <= 0) || (disc_dir_count > 4096))
+    {
+        disc_dir_count = 0;
+        return;
+    }
+
+    dirs = (unsigned char *)malloc(disc_dir_count * 8);
+    disc_dir_ids = (short *)malloc(disc_dir_count * sizeof(short));
+
+    if ((dirs == NULL) || (disc_dir_ids == NULL) || !read_bigfile(4, dirs, disc_dir_count * 8))
+    {
+        free(dirs);
+        disc_dir_count = 0;
+        return;
+    }
+
+    for (d = 0; d < disc_dir_count; d++)
+    {
+        long offset = get32(dirs + d * 8 + 4);
+        long num_files, i;
+        unsigned char *files;
+        BigFileEntry *grown;
+
+        disc_dir_ids[d] = (short)(dirs[d * 8] | (dirs[d * 8 + 1] << 8));
+
+        if (!read_bigfile(offset, word, 4) || ((num_files = get32(word)) <= 0) || (num_files > 65536) ||
+            ((files = (unsigned char *)malloc(num_files * 16)) == NULL))
+        {
+            continue;
+        }
+
+        grown = (BigFileEntry *)realloc(disc_entries, (disc_entry_count + num_files) * sizeof(BigFileEntry));
+
+        if ((grown != NULL) && read_bigfile(offset + 4, files, num_files * 16))
+        {
+            disc_entries = grown;
+
+            for (i = 0; i < num_files; i++)
+            {
+                BigFileEntry *e = &disc_entries[disc_entry_count++];
+
+                e->fileHash = get32(files + i * 16);
+                e->fileLen = get32(files + i * 16 + 4);
+                e->filePos = get32(files + i * 16 + 8);
+                e->checkSumFull = get32(files + i * 16 + 12);
+            }
+        }
+        else if (grown != NULL)
+        {
+            disc_entries = grown;
+        }
+
+        free(files);
+    }
+
+    free(dirs);
+}
+
+static void add_earlier_areas(void)
+{
+    const char *date = port_arg("-earlierareas");
+    int format;
+
+    if (date == NULL)
+    {
+        date = port_settings.earlierAreas;
+    }
+
+    if ((date == NULL) || (date[0] == '\0'))
+    {
+        return;
+    }
+
+    snprintf(earlier_date, sizeof(earlier_date), "%s", date);
+    proto_areas_folder(earlier_date, earlier_folder, sizeof(earlier_folder));
+    format = proto_areas_read(earlier_date, NULL, NULL, NULL);
+
+    if (format < 0)
+    {
+        printf("[rewraithed] earlier areas: no maps of the %s prototype in %s (Extract Earlier Areas in the launcher)\n",
+            earlier_date, earlier_folder);
+        earlier_date[0] = '\0';
+        return;
+    }
+
+    if (format == 0)
+    {
+        printf("[rewraithed] earlier areas: the %s prototype's maps have an older level format the game can't load\n",
+            earlier_date);
+        earlier_date[0] = '\0';
+        return;
+    }
+
+    proto_areas_read(earlier_date, earlier_unit, earlier_file, NULL);
+    read_disc_directories();
+
+    printf("[rewraithed] earlier areas: %d maps of the %s prototype\n", earlier_unit_count, earlier_date);
+}
+
+/* For LOAD_ChangeDirectoryByID: the index in the directory table that stands
+ * in for an earlier map's missing directory, or -1. Another map of its area
+ * (the same name up to the number) if the disc has one, else the first map's. */
+int port_earlier_directory(int id, const BigFileDirEntry *list, int count)
+{
+    int i, k;
+
+    if (!port_earlier_areas_on() || (id == 0))
+    {
+        return -1;
+    }
+
+    for (i = 0; i < count; i++)
+    {
+        if (list[i].streamUnitID == id)
+        {
+            return -1;
+        }
+    }
+
+    for (k = 0; k < earlier_unit_count; k++)
+    {
+        if (earlier_unit_ids[k] == (short)id)
+        {
+            break;
+        }
+    }
+
+    if (k == earlier_unit_count)
+    {
+        return -1;
+    }
+
+    {
+        char name[PROTO_UNIT_SIZE];
+        size_t n = strcspn(earlier_unit_names[k], "0123456789");
+        int number;
+
+        for (number = 0; number < 100; number++)
+        {
+            snprintf(name, sizeof(name), "%.*s%d", (int)n, earlier_unit_names[k], number);
+
+            for (i = 0; i < count; i++)
+            {
+                if (list[i].streamUnitID == (short)LOAD_HashUnit(name))
+                {
+                    return i;
+                }
+            }
+        }
+    }
+
+    return (count > 1) ? 1 : -1;
+}
+
+/* a file no directory the game has read lists: any directory's, else the
+ * prototype's own object */
+static BigFileEntry *earlier_disc_entry(long hash)
+{
+    long i;
+
+    for (i = 0; i < disc_entry_count; i++)
+    {
+        if (disc_entries[i].fileHash == hash)
+        {
+            return &disc_entries[i];
+        }
+    }
+
+    for (i = 0; i < mod_count; i++)
+    {
+        if (mod_files[i].fallback && (mod_files[i].entry.fileHash == hash))
+        {
+            if (!mod_files[i].reported)
+            {
+                mod_files[i].reported = 1;
+                printf("[rewraithed] earlier areas: loading %s from the %s prototype (the disc has none)\n",
+                    mod_files[i].path, earlier_date);
+            }
+
+            return &mod_files[i].entry;
+        }
+    }
+
+    return NULL;
+}
+
+/* a file's data, read the first time the drive asks for one of its sectors */
+static int load_mod_file(ModFile *m)
+{
+    FILE *f;
+
+    if (m->data != NULL)
+    {
+        return 1;
+    }
+
+    m->data = calloc((size_t)m->sectors, SECTOR_DATA);
+    f = fopen(m->disk, "rb");
+
+    if ((m->data == NULL) || (f == NULL) || (fread(m->data, 1, (size_t)m->size, f) != (size_t)m->size))
+    {
+        fprintf(stderr, "[rewraithed] earlier areas: cannot read %s\n", m->disk);
+
+        if (f != NULL)
+        {
+            fclose(f);
+        }
+
+        return m->data != NULL;
+    }
+
+    fclose(f);
+
+    return 1;
+}
+
 /* For the CD drive: puts the patched directory table into the bigfile's first sectors. */
 void port_mod_patch_sector(int lba, unsigned char *data)
 {
@@ -532,6 +833,7 @@ void LOAD_InitCdLoader(char *bigFileName, char *voiceFileName)
         /* virtual sectors start after the last sector of the disc */
         mod_next_lba = port_cd_image_sectors() + 1000;
 
+        add_earlier_areas();
         port_scan_mods_folder(add_mod_file, NULL);
         add_proto_assets();
 
@@ -560,19 +862,35 @@ BigFileEntry *LOAD_GetBigFileEntryByHash(long hash)
 
     for (i = 0; i < mod_count; i++)
     {
-        if (!mod_files[i].is_dir && mod_files[i].entry.fileHash == hash)
+        if (!mod_files[i].is_dir && !mod_files[i].fallback && (mod_files[i].entry.fileHash == hash))
         {
             if (!mod_files[i].reported)
             {
                 mod_files[i].reported = 1;
-                printf("[rewraithed] mods: loading %s from the mods folder\n", mod_files[i].path);
+                if (mod_files[i].disk[0] != '\0')
+                {
+                    printf("[rewraithed] earlier areas: loading %s from the %s prototype\n", mod_files[i].path, earlier_date);
+                }
+                else
+                {
+                    printf("[rewraithed] mods: loading %s from the mods folder\n", mod_files[i].path);
+                }
             }
 
             return &mod_files[i].entry;
         }
     }
 
-    return LOAD_GetBigFileEntryByHash_psx(hash);
+    {
+        BigFileEntry *entry = LOAD_GetBigFileEntryByHash_psx(hash);
+
+        if ((entry == NULL) && port_earlier_areas_on())
+        {
+            entry = earlier_disc_entry(hash);
+        }
+
+        return entry;
+    }
 }
 
 /* For the CD drive: the 2048 data bytes of a virtual sector, or NULL. */
@@ -586,6 +904,11 @@ const unsigned char *port_mod_sector(int lba)
 
         if ((lba >= m->first_lba) && (lba < m->first_lba + m->sectors))
         {
+            if ((m->data == NULL) && ((m->disk[0] == '\0') || !load_mod_file(m)))
+            {
+                return NULL;
+            }
+
             return m->data + (size_t)(lba - m->first_lba) * SECTOR_DATA;
         }
     }

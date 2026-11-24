@@ -321,6 +321,7 @@ int port_settings_load(PortSettings *s, const char *path)
         else if (_stricmp(key, "PGXP") == 0)            s->pgxp = yes(value);
         else if (_stricmp(key, "Antialiasing") == 0)    s->antialiasing = atoi(value);
         else if (_stricmp(key, "Area") == 0)            snprintf(s->area, sizeof(s->area), "%s", value);
+        else if (_stricmp(key, "EarlierAreas") == 0)    snprintf(s->earlierAreas, sizeof(s->earlierAreas), "%s", value);
         else if (_stricmp(key, "SkipIntros") == 0)
         {
             s->skipIntros = (_stricmp(value, "Menu") == 0) ? SKIP_TO_MENU : ((_stricmp(value, "Game") == 0) ? SKIP_TO_GAME : SKIP_NONE);
@@ -395,6 +396,7 @@ int port_settings_save(const PortSettings *s, const char *path)
 
     fprintf(f, "\n[Game]\n");
     fprintf(f, "Area=%s\n", s->area);
+    fprintf(f, "EarlierAreas=%s\n", s->earlierAreas);
     fprintf(f, "SkipIntros=%s\n", skip_names[s->skipIntros]);
     fprintf(f, "Dithering=%s\n", s->dithering ? "On" : "Off");
     fprintf(f, "PreloadChunks=%s\n", s->preloadChunks ? "Yes" : "No");
