@@ -392,11 +392,11 @@ game_fixup(Game/DEBUG.c
 # polygons drawn with those positions get them back (port/psycross).
 psycross_fixup(gte/PsyX_GTE.cpp
     FIND    "\tC2_SY2 = Lm_G2(F((long long)C2_OFY + ((long long)C2_IR2 * h_over_sz3)) >> 16);\n"
-    REPLACE "\tC2_SY2 = Lm_G2(F((long long)C2_OFY + ((long long)C2_IR2 * h_over_sz3)) >> 16);\n\n\tif (g_port_pgxp)\n\t{\n\t\tconst double unit = m_sf ? 4096.0 : 1.0;\n\t\tdouble ir1 = (double)(((long long)C2_TRX << 12) + (long long)C2_R11 * VX(idx) + (long long)C2_R12 * VY(idx) + (long long)C2_R13 * VZ(idx)) / unit;\n\t\tdouble ir2 = (double)(((long long)C2_TRY << 12) + (long long)C2_R21 * VX(idx) + (long long)C2_R22 * VY(idx) + (long long)C2_R23 * VZ(idx)) / unit;\n\n\t\tPsyX_PortPgxpStore((unsigned int)C2_SXY2, ((double)C2_OFX + ir1 * h_over_sz3) / 65536.0, ((double)C2_OFY + ir2 * h_over_sz3) / 65536.0);\n\t}\n")
+    REPLACE "\tC2_SY2 = Lm_G2(F((long long)C2_OFY + ((long long)C2_IR2 * h_over_sz3)) >> 16);\n\n\tif (g_port_pgxp)\n\t{\n\t\tconst double unit = m_sf ? 4096.0 : 1.0;\n\t\tdouble ir1 = (double)(((long long)C2_TRX << 12) + (long long)C2_R11 * VX(idx) + (long long)C2_R12 * VY(idx) + (long long)C2_R13 * VZ(idx)) / unit;\n\t\tdouble ir2 = (double)(((long long)C2_TRY << 12) + (long long)C2_R21 * VX(idx) + (long long)C2_R22 * VY(idx) + (long long)C2_R23 * VZ(idx)) / unit;\n\t\tdouble ir3 = (double)(((long long)C2_TRZ << 12) + (long long)C2_R31 * VX(idx) + (long long)C2_R32 * VY(idx) + (long long)C2_R33 * VZ(idx)) / 4096.0;\n\n\t\tPsyX_PortPgxpStore((unsigned int)C2_SXY2, ((double)C2_OFX + ir1 * h_over_sz3) / 65536.0, ((double)C2_OFY + ir2 * h_over_sz3) / 65536.0, ir3);\n\t}\n")
 
 psycross_fixup(gte/PsyX_GTE.cpp
     FIND    "int GTE_RotTransPers(int idx, int lm)\n"
-    REPLACE "extern \"C\" int g_port_pgxp;\nextern \"C\" void PsyX_PortPgxpStore(unsigned int sxy, double x, double y);\n\nint GTE_RotTransPers(int idx, int lm)\n")
+    REPLACE "extern \"C\" int g_port_pgxp;\nextern \"C\" void PsyX_PortPgxpStore(unsigned int sxy, double x, double y, double z);\n\nint GTE_RotTransPers(int idx, int lm)\n")
 
 psycross_fixup(gpu/PsyX_GPU.cpp
     FIND    "\tApplyVertexPGXP(&vertex[0], p0, ofsX, ofsY, gteidx, -2);\n"
@@ -414,7 +414,7 @@ psycross_fixup(gpu/PsyX_GPU.cpp
 # x as -1 - fraction on polygons PGXP placed (a mark for the edges pass)
 psycross_fixup(render/PsyX_render.cpp
     FIND    "\"\tgl_Position = Projection * vec4(a_position.xy, 0.0, 1.0);\\n\""
-    REPLACE "\"\tgl_Position = Projection * vec4(a_position.xy + vec2(a_extra.z < 0.0 ? -1.0 - a_extra.z : a_extra.z, a_extra.w) / 128.0, 0.0, 1.0);\\n\"")
+    REPLACE "\"\tgl_Position = Projection * vec4(a_position.xy + vec2(a_extra.z < 0.0 ? -1.0 - a_extra.z : a_extra.z, a_extra.w) / 128.0, 0.0, 1.0);\\n\"\"\tgl_Position *= (a_extra.z < 0.0 && a_zw.x > 0.0) ? a_zw.x / 256.0 : 1.0;\\n\"")
 
 # Alternate keys, the mouse and the debug menu key (port/psycross), on top
 # of the keyboard.
@@ -1008,3 +1008,29 @@ game_fixup(Game/GAMELOOP.c
     FIND    "    DEBUG_Draw(gameTracker, drawot);\n"
     REPLACE "    {\n        extern void port_qol_frame(void);\n\n        port_qol_frame();\n    }\n\n    DEBUG_Draw(gameTracker, drawot);\n")
 
+
+# Perspective-correct textures with PGXP (port/psycross/psyx_port.cpp): the
+# depth of each vertex of a polygon PGXP placed follows it into two
+# triangles, goes to the GPU with the vertices, and the vertex shader scales
+# the position by it, so textures no longer swim on large polygons.
+psycross_fixup(gpu/PsyX_GPU.cpp
+    FIND    "void TriangulateQuad()\n{\n"
+    REPLACE "extern \"C\" void PsyX_PortTriangulateDepth(int first);\n\nvoid TriangulateQuad()\n{\n\tPsyX_PortTriangulateDepth(g_vertexIndex);\n\n")
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "\tglBufferSubData(GL_ARRAY_BUFFER, 0, num_vertices * sizeof(GrVertex), vertices);\n"
+    REPLACE "\tglBufferSubData(GL_ARRAY_BUFFER, 0, num_vertices * sizeof(GrVertex), vertices);\n\n\tPsyX_PortUploadDepth(num_vertices);\n")
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "void GR_UpdateVertexBuffer(const GrVertex* vertices, int num_vertices)\n{\n"
+    REPLACE "extern \"C\" void PsyX_PortUploadDepth(int count);\n\nvoid GR_UpdateVertexBuffer(const GrVertex* vertices, int num_vertices)\n{\n")
+psycross_fixup(render/PsyX_render.cpp
+    FIND    "#if USE_PGXP\n\tglBindAttribLocation(program, a_zw, \"a_zw\");\n#endif\n"
+    REPLACE "\tglBindAttribLocation(program, a_zw, \"a_zw\");\n\tglBindAttribLocation(program, a_extra, \"a_extra\");\n")
+
+# With PGXP's perspective-correct textures, terrain near the camera is split
+# into smaller triangles only when it is very close (port_subdiv_near,
+# port/psycross/psyx_port.cpp), instead of within 640: the split corners'
+# texture coordinates are rounded down to whole texels, and walls that kept
+# passing in and out of that distance made their bricks jump.
+game_fixup(Game/HASM_1.s
+    FIND    "    nop\n    slti       $at, $t7, 0x280\n    bnez       $at, .L80026008\n"
+    REPLACE "    nop\n    lui        $v0, %hi(port_subdiv_near)\n    lw         $v0, %lo(port_subdiv_near)($v0)\n    nop\n    slt        $at, $t7, $v0\n    bnez       $at, .L80026008\n")

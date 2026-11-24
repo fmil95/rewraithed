@@ -803,10 +803,91 @@ typedef struct
     unsigned int key;
     unsigned int frame;
     float x, y;
+    float z;                /* depth in front of the camera */
+    int ambiguous;          /* another vertex was stored at this key this
+                             * frame: not used */
 } PortPgxpEntry;
 
-static PortPgxpEntry pgxp_cache[1 << 16];
+/* Four entries per slot: two vertices whose positions land in the same
+ * slot both stay, where one used to push the other out and its polygon
+ * lost PGXP for that frame (textures flickered between the two mappings).
+ * One table per frame, by the frame's parity: polygons are drawn in the
+ * frame the GTE placed them or the one after, and a vertex of the next frame
+ * landing on the same screen position must not stand in for one of theirs */
+#define PGXP_WAYS 4
+
+static PortPgxpEntry pgxp_cache[2][1 << 16][PGXP_WAYS];
+
+/* Perspective-correct textures with PGXP. The PSX maps a texture straight
+ * across each triangle on screen (affine), which made it swim on large
+ * polygons as the camera moved. For polygons PGXP placed whole, the depth
+ * of each vertex goes with it, in this buffer beside the vertex buffer
+ * (index for index: PsyX_PortPgxpApply, PsyX_PortTriangulateDepth), to the
+ * GPU as one more attribute (PsyX_PortUploadDepth), and the vertex shader
+ * scales its position by it: the GPU then interpolates the texture
+ * coordinates, and the colours, with perspective. 0: drawn as before. */
+extern "C++" GrVertex g_vertexBuffer[MAX_VERTEX_BUFFER_SIZE];  /* PsyX_GPU.cpp */
+static float g_port_vertex_depth[MAX_VERTEX_BUFFER_SIZE];
+
+
+/* TriangulateQuad: a quad's four vertices become two triangles' six */
+void PsyX_PortTriangulateDepth(int first)
+{
+    float *d = &g_port_vertex_depth[first];
+
+    if ((first < 0) || (first + 6 > MAX_VERTEX_BUFFER_SIZE))
+    {
+        return;
+    }
+
+    d[4] = d[3];
+    d[5] = d[2];
+    d[2] = d[3];
+    d[3] = d[1];
+}
+
+/* GR_UpdateVertexBuffer, with the vertex array object being drawn bound */
+void PsyX_PortUploadDepth(int count)
+{
+    static GLuint buffer;
+    GLint previous = 0;
+
+    if (count <= 0)
+    {
+        return;
+    }
+
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previous);
+
+    if (buffer == 0)
+    {
+        glGenBuffers(1, &buffer);
+        glBindBuffer(GL_ARRAY_BUFFER, buffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(g_port_vertex_depth), NULL, GL_DYNAMIC_DRAW);
+    }
+    else
+    {
+        glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    }
+
+    glBufferSubData(GL_ARRAY_BUFFER, 0, count * sizeof(float), g_port_vertex_depth);
+    glVertexAttribPointer(a_zw, 1, GL_FLOAT, GL_FALSE, sizeof(float), NULL);
+    glEnableVertexAttribArray(a_zw);
+
+    glBindBuffer(GL_ARRAY_BUFFER, (GLuint)previous);
+}
 static unsigned int pgxp_frame = 1;
+
+
+/* Terrain within this distance of the camera (the nearest corner's depth)
+ * is split into smaller triangles by the game (DRAW_DisplaySubdivPolytope_S,
+ * HASM_1.s fixup), which kept the PSX's flat-mapped textures from bending
+ * too much and its corners inside the GTE's screen range. Their texture
+ * coordinates are rounded down to whole texels, so with PGXP's textures
+ * mapped with perspective a wall crossing that distance had its bricks
+ * jump: then only what is really close is split. */
+#define PORT_SUBDIV_NEAR_PGXP 0x100
+long port_subdiv_near = 0x280;
 
 /* REWRAITHED_PACELOG: how long each picture stayed up (the time between one
  * swap returning and the next), every 300 pictures, in display refreshes
@@ -888,6 +969,10 @@ void PsyX_PortBeforeSwap(void)
     }
 
     pgxp_frame++;
+
+    /* the distance within which terrain is split (HASM_1.s fixup): the
+     * game's 640, or closer with PGXP's perspective-correct textures */
+    port_subdiv_near = g_port_pgxp ? PORT_SUBDIV_NEAR_PGXP : 0x280;
 
     if (!screenshotPending)
     {
@@ -980,43 +1065,120 @@ static unsigned int pgxp_slot(unsigned int key)
     return (key * 2654435761u) >> 16;
 }
 
-void PsyX_PortPgxpStore(unsigned int sxy, double x, double y)
+void PsyX_PortPgxpStore(unsigned int sxy, double x, double y, double z)
 {
     PortPgxpEntry *e;
     short sx = (short)(sxy & 0xFFFF);
     short sy = (short)(sxy >> 16);
 
-    /* clamped by the GTE: the integer position is not the exact one */
-    if ((x < sx - 0.5) || (x >= sx + 2.0) || (y < sy - 0.5) || (y >= sy + 2.0))
+    /* Clamped by the GTE (the PSX screen range is -1024 to 1023), the
+     * integer position is not the exact one, yet the exact one is still
+     * kept, under the clamped key: near walls and floors have corners far
+     * off screen, and polygons whose corners crossed that range lost PGXP
+     * and its perspective as the camera moved, and jittered. Positions the
+     * vertex format cannot hold are left out. */
+    (void)sx;
+    (void)sy;
+
+    if ((x < -32000.0) || (x > 32000.0) || (y < -32000.0) || (y > 32000.0) || !(z > 0.0))
     {
         return;
     }
 
-    e = &pgxp_cache[pgxp_slot(sxy)];
+    /* this vertex's own entry if it has one this frame, else a free one
+     * (left from an older frame), else one by turns */
+    {
+        PortPgxpEntry *ways = pgxp_cache[pgxp_frame & 1][pgxp_slot(sxy)];
+        int w;
+
+        e = NULL;
+
+        for (w = 0; (w < PGXP_WAYS) && (e == NULL); w++)
+        {
+            if ((ways[w].frame == pgxp_frame) && (ways[w].key == sxy))
+            {
+                /* the same vertex again (shared by neighbouring polygons),
+                 * or another one at the same key: then neither is used */
+                float dz = ways[w].z - (float)z;
+
+                if ((fabs(ways[w].x - x) > 0.75) || (fabs(ways[w].y - y) > 0.75) ||
+                    (dz > 0.02f * (float)z) || (-dz > 0.02f * (float)z))
+                {
+                    ways[w].ambiguous = 1;
+                }
+
+                return;
+            }
+        }
+
+        for (w = 0; (w < PGXP_WAYS) && (e == NULL); w++)
+        {
+            if (ways[w].frame != pgxp_frame)
+            {
+                e = &ways[w];
+            }
+        }
+
+        if (e == NULL)
+        {
+            e = &ways[sxy & (PGXP_WAYS - 1)];
+        }
+    }
+
     e->key = sxy;
     e->frame = pgxp_frame;
+    e->ambiguous = 0;
     e->x = (float)x;
     e->y = (float)y;
+    e->z = (float)z;
 }
 
 void PsyX_PortPgxpApply(GrVertex *vertex, short **pts, int count)
 {
     const PortPgxpEntry *found[4];
+    const PortPgxpEntry *inFrame[2][4];
+    int hitsIn[2] = { 0, 0 };
     int hits = 0;
+    int pick;
     int i;
+    int f;
 
     if (!g_port_pgxp)
     {
         return;
     }
 
+    /* the polygon's vertices in this frame's table and in the last one's;
+     * it takes the frame that has more of them, never a mix of the two */
+    for (f = 0; f < 2; f++)
+    {
+        unsigned int frame = pgxp_frame - (unsigned int)f;
+
+        for (i = 0; i < count; i++)
+        {
+            unsigned int key = (unsigned short)pts[i][0] | ((unsigned int)(unsigned short)pts[i][1] << 16);
+            const PortPgxpEntry *ways = pgxp_cache[frame & 1][pgxp_slot(key)];
+            int w;
+
+            inFrame[f][i] = NULL;
+
+            for (w = 0; w < PGXP_WAYS; w++)
+            {
+                if ((ways[w].key == key) && (ways[w].frame == frame) && !ways[w].ambiguous)
+                {
+                    inFrame[f][i] = &ways[w];
+                    break;
+                }
+            }
+            hitsIn[f] += (inFrame[f][i] != NULL);
+        }
+    }
+
+    pick = (hitsIn[1] > hitsIn[0]) ? 1 : 0;
+
     for (i = 0; i < count; i++)
     {
-        unsigned int key = (unsigned short)pts[i][0] | ((unsigned int)(unsigned short)pts[i][1] << 16);
-        const PortPgxpEntry *e = &pgxp_cache[pgxp_slot(key)];
-
-        /* stored this frame or the one before (drawn a frame later) */
-        found[i] = ((e->key == key) && (pgxp_frame - e->frame <= 1)) ? e : NULL;
+        found[i] = inFrame[pick][i];
         hits += (found[i] != NULL);
     }
 
@@ -1024,6 +1186,70 @@ void PsyX_PortPgxpApply(GrVertex *vertex, short **pts, int count)
     if (hits < 2)
     {
         return;
+    }
+
+    /* the depth of each vertex, for textures mapped with perspective: only
+     * when the whole polygon has one (a triangle must not mix the two
+     * mappings), else 0, drawn as before. A quad with three corners found
+     * gets the fourth's: across a flat polygon 1/depth changes linearly on
+     * screen, so the plane through the three gives it at the fourth's
+     * position. */
+    {
+        long base = (long)(vertex - g_vertexBuffer);
+        float depth[4];
+        int known = 0;
+
+        for (i = 0; i < count; i++)
+        {
+            depth[i] = (found[i] != NULL) ? ((found[i]->z > 16.0f) ? found[i]->z : 16.0f) : 0.0f;
+            known += (found[i] != NULL);
+        }
+
+        if ((known == 3) && (count == 4))
+        {
+            float px[3], py[3], pw[3];
+            int missing = 0;
+            int n = 0;
+            float det;
+
+            for (i = 0; i < 4; i++)
+            {
+                if (found[i] == NULL)
+                {
+                    missing = i;
+                    continue;
+                }
+
+                px[n] = found[i]->x;
+                py[n] = found[i]->y;
+                pw[n] = 1.0f / depth[i];
+                n++;
+            }
+
+            det = (px[1] - px[0]) * (py[2] - py[0]) - (px[2] - px[0]) * (py[1] - py[0]);
+
+            if ((det > 0.01f) || (det < -0.01f))
+            {
+                /* w = a + b (x - x0) + c (y - y0) through the three */
+                float b = ((pw[1] - pw[0]) * (py[2] - py[0]) - (pw[2] - pw[0]) * (py[1] - py[0])) / det;
+                float c = ((px[1] - px[0]) * (pw[2] - pw[0]) - (px[2] - px[0]) * (pw[1] - pw[0])) / det;
+                float w = pw[0] + b * ((float)pts[missing][0] - px[0]) + c * ((float)pts[missing][1] - py[0]);
+
+                if (w > (1.0f / 65536.0f))
+                {
+                    depth[missing] = 1.0f / w;
+                    known = 4;
+                }
+            }
+        }
+
+        if ((base >= 0) && (base + count <= MAX_VERTEX_BUFFER_SIZE))
+        {
+            for (i = 0; i < count; i++)
+            {
+                g_port_vertex_depth[base + i] = (known == count) ? depth[i] : 0.0f;
+            }
+        }
     }
 
     for (i = 0; i < count; i++)

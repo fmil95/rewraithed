@@ -53,7 +53,15 @@ set(HASM_EXTERNS
     MATH3D_FastSqrt:1
 )
 
-set(HASM_SOURCES "${SOULRE_DIR}/src/Game/HASM_1.s" "${SOULRE_DIR}/src/Game/HASM_2.s")
+# the copies port/fixups.cmake patched, where there are any
+set(HASM_SOURCES "")
+foreach(_hasm IN ITEMS HASM_1.s HASM_2.s)
+    if(EXISTS "${GAME_FIXED_DIR}/Game/${_hasm}")
+        list(APPEND HASM_SOURCES "${GAME_FIXED_DIR}/Game/${_hasm}")
+    else()
+        list(APPEND HASM_SOURCES "${SOULRE_DIR}/src/Game/${_hasm}")
+    endif()
+endforeach()
 set(HASM_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/hasm_recomp.c")
 
 set(_hasm_args --gte "${SOULRE_DIR}/include/gte_macros.s" --out "${HASM_OUTPUT}")
