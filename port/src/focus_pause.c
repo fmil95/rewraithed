@@ -1,7 +1,8 @@
 /*
  * The game stops while its window is hidden: minimized, or, in fullscreen
  * and borderless (where the window fills the screen), no longer the active
- * window (Alt+Tab). Sound stops with it and the game picks up where it was
+ * window (Alt+Tab), unless "Focus Game Window" is off (FocusGameWindow in
+ * the settings): then it keeps running as a window does. Sound stops with it and the game picks up where it was
  * when the window is back. A window in windowed mode keeps running while it
  * can be seen, even when another window is active.
  *
@@ -57,7 +58,7 @@ static int window_hidden(void)
         return 1;
     }
 
-    return (port_settings.display != DISPLAY_WINDOWED) && !(flags & SDL_WINDOW_INPUT_FOCUS);
+    return (port_settings.display != DISPLAY_WINDOWED) && port_settings.focusWindow && !(flags & SDL_WINDOW_INPUT_FOCUS);
 }
 
 /* fullscreen and active: the sound takes the audio device for itself, so
@@ -66,7 +67,7 @@ static int wants_exclusive_audio(void)
 {
     unsigned int flags = PsyX_PortWindowFlags();
 
-    return (port_settings.display == DISPLAY_FULLSCREEN) && (flags & SDL_WINDOW_INPUT_FOCUS) &&
+    return (port_settings.display == DISPLAY_FULLSCREEN) && port_settings.focusWindow && (flags & SDL_WINDOW_INPUT_FOCUS) &&
         !(flags & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_HIDDEN));
 }
 

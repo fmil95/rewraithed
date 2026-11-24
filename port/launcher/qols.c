@@ -137,7 +137,7 @@ int qols_dialog(HWND owner, PortSettings *s, HFONT font, int dpi)
             owner, NULL, inst, NULL);
     }
 
-    c = CHILD(L"BUTTON", L"QoLs", BS_GROUPBOX, 12, 8, 440, 124 - (3 - QOLS_ROWS) * QOLS_ROW_HEIGHT, 0);
+    c = CHILD(L"BUTTON", L"Quality-of-Life Improvements", BS_GROUPBOX, 12, 8, 440, 124 - (3 - QOLS_ROWS) * QOLS_ROW_HEIGHT, 0);
     FONT(c);
 
     /* each option's explanation, on its label and checks */

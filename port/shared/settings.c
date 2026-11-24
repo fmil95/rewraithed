@@ -68,6 +68,7 @@ void port_settings_defaults(PortSettings *s)
     s->refresh = 0;
     s->scaleLinear = 1;
     s->vsync = 1;
+    s->focusWindow = 1;
     s->pillarbox = 1;
     s->filtering = 0;
     s->pgxp = 0;
@@ -297,6 +298,7 @@ int port_settings_load(PortSettings *s, const char *path)
         else if (_stricmp(key, "NoPuzzleRespawn") == 0) s->noPuzzleRespawn = yes(value);
         else if (_stricmp(key, "UnderworldChargers") == 0) s->underChargers = yes(value);
         else if (_stricmp(key, "ForgivingAbbeyJumps") == 0) s->abbeyJumps = yes(value);
+        else if (_stricmp(key, "FocusGameWindow") == 0) s->focusWindow = yes(value);
         else if (_stricmp(key, "Filtering") == 0)       s->filtering = _stricmp(value, "Off") != 0;
         else if (_stricmp(key, "PGXP") == 0)            s->pgxp = yes(value);
         else if (_stricmp(key, "Antialiasing") == 0)    s->antialiasing = atoi(value);
@@ -367,6 +369,7 @@ int port_settings_save(const PortSettings *s, const char *path)
     fprintf(f, "DisableLetterboxing=%s\n", s->noLetterbox ? "Yes" : "No");
     fprintf(f, "UnderworldChargers=%s\n", s->underChargers ? "Yes" : "No");
     fprintf(f, "ForgivingAbbeyJumps=%s\n", s->abbeyJumps ? "Yes" : "No");
+    fprintf(f, "FocusGameWindow=%s\n", s->focusWindow ? "Yes" : "No");
     fprintf(f, "NoPuzzleRespawn=%s\n", s->noPuzzleRespawn ? "Yes" : "No");
     fprintf(f, "Filtering=%s\n", s->filtering ? "Bilinear" : "Off");
     fprintf(f, "PGXP=%s\n", s->pgxp ? "Yes" : "No");

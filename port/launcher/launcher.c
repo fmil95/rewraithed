@@ -30,7 +30,7 @@ enum
     ID_FILTERING, ID_AA, ID_AREA,
     ID_SKIP, ID_DITHER, ID_PRELOAD_YES, ID_PRELOAD_NO, ID_DEBUG_YES, ID_DEBUG_NO,
     ID_LOG_YES, ID_LOG_NO, ID_DISCORD_YES, ID_DISCORD_NO, ID_DC_YES, ID_DC_NO, ID_PROTO_YES, ID_PROTO_NO, ID_MOV_DC, ID_MOV_PC, ID_MOV_PSX, ID_NOLB_YES, ID_NOLB_NO, ID_FPS, ID_CONTROLS, ID_JOYSTICK,
-    ID_PARAMS, ID_PLAY, ID_UPDATE, ID_QOLS,
+    ID_PARAMS, ID_PLAY, ID_UPDATE, ID_QOLS, ID_FOCUS,
 };
 
 typedef struct { int w, h; } Resolution;
@@ -435,6 +435,12 @@ static void build_ui(HWND hwnd)
         combo_row(hwnd, L"Area", 24, 457, 36, 64, areaWidth, ID_AREA,
             L"Starts the game straight in the chosen area. Default starts where the disc does.");
 
+        control(hwnd, L"BUTTON", L"Focus Game Window", BS_AUTOCHECKBOX | WS_TABSTOP, paramsX + 66, 426, 140, 22, ID_FOCUS);
+        tooltip(hwnd, GetDlgItem(hwnd, ID_FOCUS),
+            L"In fullscreen, the game keeps the screen to itself: it pauses when another window takes the focus, "
+            L"and takes the sound device for itself, so other programs' sounds (chat notifications and the like) "
+            L"don't play over it.");
+
         lbl = label(hwnd, L"Parameters", paramsX, 457, 64);
         control(hwnd, L"EDIT", L"", ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP, paramsX + 66, 458, 480 - (paramsX + 66), 22, ID_PARAMS);
         SendDlgItemMessageW(hwnd, ID_PARAMS, EM_SETLIMITTEXT, sizeof(settings.parameters) - 1, 0);
@@ -566,6 +572,7 @@ static void show_settings(void)
     yes_no_set(ID_VSYNC_YES, settings.vsync);
     yes_no_set(ID_PILLAR_YES, settings.pillarbox);
     yes_no_set(ID_NOLB_YES, settings.noLetterbox);
+    SendDlgItemMessageW(main_window, ID_FOCUS, BM_SETCHECK, settings.focusWindow ? BST_CHECKED : BST_UNCHECKED, 0);
     combo_set(ID_FILTERING, settings.filtering ? 1 : 0);
     yes_no_set(ID_PGXP_YES, settings.pgxp);
 
@@ -644,6 +651,7 @@ static void read_settings(void)
     settings.vsync = yes_no_get(ID_VSYNC_YES);
     settings.pillarbox = yes_no_get(ID_PILLAR_YES);
     settings.noLetterbox = yes_no_get(ID_NOLB_YES);
+    settings.focusWindow = (SendDlgItemMessageW(main_window, ID_FOCUS, BM_GETCHECK, 0, 0) == BST_CHECKED);
     settings.filtering = combo_get(ID_FILTERING) == 1;
     settings.pgxp = yes_no_get(ID_PGXP_YES);
     settings.antialiasing = aa_values[combo_get(ID_AA)];

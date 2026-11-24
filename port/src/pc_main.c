@@ -383,6 +383,13 @@ int main(int argc, char **argv)
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, port_settings.antialiasing);
     }
 
+    /* Focus Game Window off: a fullscreen window stays up when another
+     * window takes the focus, and the game keeps running (focus_pause.c) */
+    if (!port_settings.focusWindow)
+    {
+        SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
+    }
+
     /* Borderless: the window is made at the desktop's size from the start
      * (PsyCross does so for a size of 0 x 0) instead of being resized once
      * made, which video capture (OBS's game capture) showed as black for its
