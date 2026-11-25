@@ -26,7 +26,6 @@
 #include "Game/VOICEXA.h"
 
 int port_has_flag(const char *name);
-void port_osd_note(const char *fmt, ...);   /* osd.c */
 unsigned short CINE_Pad(int pad);           /* CINEPSX.c: the pad's buttons, active-low */
 
 void GAMELOOP_Process_psx(GameTracker *gameTracker);
@@ -49,7 +48,6 @@ static int skip_active;             /* playing out a skipped scene */
 static long skip_frames;
 static unsigned long skip_voice_flag;   /* debugFlags 0x80000 (voices on) before the scene */
 static Uint32 hold_since;           /* when Cross was pressed in this scene, 0 if not held */
-static int hold_shown;              /* the seconds left last shown */
 static int skip_gave_up;            /* this scene ran past SKIP_LIMIT: it plays as it is */
 
 static int skip_all(void)
@@ -75,11 +73,10 @@ static int cross_held(void)
     return !(CINE_Pad(0) & PAD_CROSS) || !(CINE_Pad(1) & PAD_CROSS);
 }
 
-/* 1 once Cross has been held long enough in this scene; a note counts down */
+/* 1 once Cross has been held long enough in this scene */
 static int held_to_skip(void)
 {
     Uint32 now = SDL_GetTicks();
-    int left;
 
     if (!cross_held())
     {
@@ -90,23 +87,9 @@ static int held_to_skip(void)
     if (hold_since == 0)
     {
         hold_since = now ? now : 1;
-        hold_shown = -1;
     }
 
-    if (now - hold_since >= SKIP_HOLD_MS)
-    {
-        return 1;
-    }
-
-    left = (int)((SKIP_HOLD_MS - (now - hold_since) + 999) / 1000);
-
-    if (left != hold_shown)
-    {
-        hold_shown = left;
-        port_osd_note("Hold to skip the cutscene: %d", left);
-    }
-
-    return 0;
+    return (now - hold_since) >= SKIP_HOLD_MS;
 }
 
 static void skip_start(void)
