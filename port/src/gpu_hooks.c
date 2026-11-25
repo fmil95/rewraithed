@@ -238,8 +238,33 @@ static volatile int port_draw_done_pending;
 
 void port_start_vblank_thread(void (*handler)(void));
 
-/* Runs on the vblank thread, like an interrupt handler. */
-static void port_vblank(void)
+/* Held while a frame is drawn and presented, and while the vblank handlers
+ * run. The game's vblank handler flips the display (VblTick's PutDispEnv);
+ * on PSX that only changes which page is scanned out, but PsyCross draws
+ * every primitive relative to the displayed page, so a flip in the middle of
+ * a frame threw the rest of it off-screen: whole frames showed only what was
+ * drawn before the flip (seen at the warp gates, where loading a destination
+ * makes frames long). With the lock the flip waits for the frame, as it
+ * would for the next vblank. */
+static SDL_mutex *port_frame_lock;
+
+static void port_frame_lock_take(void)
+{
+    if (port_frame_lock != NULL)
+    {
+        SDL_LockMutex(port_frame_lock);
+    }
+}
+
+static void port_frame_lock_give(void)
+{
+    if (port_frame_lock != NULL)
+    {
+        SDL_UnlockMutex(port_frame_lock);
+    }
+}
+
+static void port_vblank_handlers(void)
 {
     void (*vsync)(void);
 
@@ -263,8 +288,17 @@ static void port_vblank(void)
     }
 }
 
+/* Runs on the vblank thread, like an interrupt handler. */
+static void port_vblank(void)
+{
+    port_frame_lock_take();
+    port_vblank_handlers();
+    port_frame_lock_give();
+}
+
 void port_gpu_init(void)
 {
+    port_frame_lock = SDL_CreateMutex();     /* recursive, as SDL's are */
     port_start_vblank_thread(port_vblank);
 }
 
@@ -621,6 +655,9 @@ void port_DrawOTag(u_long *p)
         port_check_ot(p);
     }
 
+    /* the display page stays put until the frame is presented */
+    port_frame_lock_take();
+
     /* a frame is being drawn: it shows those writes itself */
     port_display_dirty = 0;
     /* PsyCross's PutDispEnv keeps the display a frame behind on purpose, so
@@ -652,6 +689,8 @@ void port_DrawOTag(u_long *p)
     g_port_keep_frame = 1;
     PsyX_EndScene();
     g_port_keep_frame = 0;
+
+    port_frame_lock_give();
 
     /* the in-game loop presents frames without calling VSync */
     PsyX_UpdateInput();
