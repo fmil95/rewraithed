@@ -902,9 +902,12 @@ game_fixup(Game/GAMELOOP.c
 # is up went straight back to running in the middle of the paused frame,
 # whose saved display list was then drawn without end: the window froze.
 # It does nothing there now (port_debug_key_pressed still runs each frame).
+# Nor while Raziel stands in a warp gate choosing a destination (the menu
+# opened then crashed the game), nor during an in-engine cutscene (Raziel's
+# control taken away and the camera on a cinematic path).
 game_fixup(Game/GAMELOOP.c
     FIND    "        if ((((controlCommand[1] & 0x60) == 0x60) && (!(controlCommand[0] & 0xF))) || port_debug_key_pressed())\n"
-    REPLACE "        if (((((controlCommand[1] & 0x60) == 0x60) && (!(controlCommand[0] & 0xF))) || port_debug_key_pressed()) && (gameTrackerX.gameMode != 6))\n")
+    REPLACE "        if (((((controlCommand[1] & 0x60) == 0x60) && (!(controlCommand[0] & 0xF))) || port_debug_key_pressed()) && (gameTrackerX.gameMode != 6) && (WARPGATE_IsWarpgateInUse() == 0) && !(((gameTrackerX.gameFlags & 0x10) != 0) && (theCamera.mode == 5)))\n")
 
 # 60 FPS: an animation's root motion (how far it moves its instance) came
 # frame by frame from G2Anim_GetRootMotionOverInterval, which rounds down
