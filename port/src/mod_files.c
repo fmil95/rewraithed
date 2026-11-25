@@ -588,12 +588,18 @@ static void earlier_file(void *ctx, const char *game_path, long length, unsigned
     mod_count++;
 }
 
-/* the directory table and every directory's files, for the lookups below */
+/* the directory table and every directory's files, for the lookups below
+ * (read once) */
 static void read_disc_directories(void)
 {
     unsigned char word[4];
     unsigned char *dirs;
     long d;
+
+    if (disc_entries != NULL)
+    {
+        return;
+    }
 
     if (!read_bigfile(0, word, 4) || ((disc_dir_count = get32(word)) <= 0) || (disc_dir_count > 4096))
     {
@@ -877,6 +883,11 @@ void LOAD_InitCdLoader(char *bigFileName, char *voiceFileName)
         /* virtual sectors start after the last sector of the disc */
         mod_next_lba = port_cd_image_sectors() + 1000;
 
+        /* every directory's files: a file the game asks for in a directory
+         * that doesn't list it is found in another (the Underworld's
+         * rechargers, qol.c, use pillars1's objects while under1's
+         * directory is the current one) */
+        read_disc_directories();
         add_earlier_areas();
         add_mod_folders();
         port_scan_mods_folder(add_mod_file, NULL);
@@ -929,7 +940,9 @@ BigFileEntry *LOAD_GetBigFileEntryByHash(long hash)
     {
         BigFileEntry *entry = LOAD_GetBigFileEntryByHash_psx(hash);
 
-        if ((entry == NULL) && port_earlier_areas_on())
+        /* not in the current directory or the root: any directory's, then
+         * an earlier area's own object */
+        if (entry == NULL)
         {
             entry = earlier_disc_entry(hash);
         }
