@@ -92,6 +92,15 @@ game_fixup(Game/PHYSOBS.c
     FIND    "    model = instance->object->modelList[instance->currentModel];\n\n    startFlg = 0;\n"
     REPLACE "    model = instance->object->modelList[instance->currentModel];\n\n    if (instance->matrix == NULL)\n    {\n        return 0;\n    }\n\n    startFlg = 0;\n")
 
+# Dangling pointer: Raziel's save data (abilities, plane, health, mana) is
+# filled in a local of RazielQuery and handed back by address, read by the
+# saver after the function returns. On PSX that stack area is still intact
+# when it is copied; on PC an optimised build reuses it, and saves get
+# garbage (the Reaver, a mana max of 44476, no shifting back).
+game_fixup(Game/RAZIEL/RAZIEL.c
+    FIND    "    unsigned long ability;\n    PlayerSaveData data;\n"
+    REPLACE "    unsigned long ability;\n    static PlayerSaveData data;\n")
+
 # NULL read: a monster first sensing an ally instance that has no extra
 # data (seen on the water path between city19 and city9); on PSX the flag
 # test reads zero there.
